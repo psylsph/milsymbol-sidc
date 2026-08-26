@@ -1,0 +1,40 @@
+{
+  "name": "milsymbol-sidc",
+  "version": "0.1.0",
+  "description": "Fluent TypeScript builder for MIL-STD-2525E / APP-6 numeric (20-character) SIDC strings, for use with milsymbol.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "milsymbol",
+    "sidc",
+    "mil-std-2525",
+    "milstd2525e",
+    "app6",
+    "military",
+    "symbology",
+    "c2"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
