@@ -33,6 +33,14 @@
     "c2"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/psylsph/milsymbol-sidc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/psylsph/milsymbol-sidc/issues"
+  },
+  "homepage": "https://github.com/psylsph/milsymbol-sidc#readme",
   "devDependencies": {
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
