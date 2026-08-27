@@ -1,6 +1,6 @@
 {
   "name": "milsymbol-sidc",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fluent TypeScript builder for MIL-STD-2525E / APP-6 numeric (20-character) SIDC strings, for use with milsymbol.",
   "type": "module",
   "main": "./dist/src/index.js",
