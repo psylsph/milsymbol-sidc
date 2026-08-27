@@ -33,10 +33,10 @@ export const StandardIdentity = {
   AssumedFriend: "2",
   Friend: "3",
   Neutral: "4",
-  /** Hostile suspect; becomes Joker in exercise context. */
+  /** Dual-use: Suspect (reality) / Joker (exercise). */
   SuspectJoker: "5",
-  /** Hostile faker (exercise context only). */
-  Faker: "6",
+  /** Dual-use: Hostile (reality) / Faker (exercise). */
+  HostileFaker: "6",
 } as const;
 export type StandardIdentity = (typeof StandardIdentity)[keyof typeof StandardIdentity];
 

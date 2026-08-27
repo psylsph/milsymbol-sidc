@@ -71,17 +71,6 @@ export function findCombinationProblems(fields: SidcFields): string[] {
   const problems: string[] = [];
   const { version, context, identity, symbolSet, status } = fields;
 
-  // Faker ("6") only exists in exercises; Suspect/Joker ("5") is a valid
-  // real-world identity (dashed hostile frame).
-  if (
-    identity === StandardIdentity.Faker &&
-    context !== Context.Exercise
-  ) {
-    problems.push(
-      `Identity "${identity}" (faker) is only valid with exercise context.`
-    );
-  }
-
   // Condition statuses do not apply to control measures (tactical graphics).
   if (
     (Object.values(Status) as readonly string[]).includes(status) &&

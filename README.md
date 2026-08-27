@@ -152,8 +152,8 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `AssumedFriend` | `"2"` | Blue frame, dashed |
 | `Friend` | `"3"` | Blue frame |
 | `Neutral` | `"4"` | Green frame |
-| `SuspectJoker` | `"5"` | Red frame, dashed (Joker in exercises) |
-| `Faker` | `"6"` | Red frame (exercises only) |
+| `SuspectJoker` | `"5"` | Red frame, dashed — **Suspect** in reality, **Joker** in exercises |
+| `HostileFaker` | `"6"` | Red frame — **Hostile** in reality, **Faker** in exercises |
 
 #### `SymbolSet`
 
@@ -210,8 +210,6 @@ Two layers of validation run at different times:
 
 Active combination rules:
 
-- Faker identities require exercise context (`SuspectJoker` is a valid
-  real-world identity — it renders the dashed suspect-hostile frame).
 - Condition statuses (fully capable … full to capacity) do not apply to
   control measures.
 - Exercise symbols on the unknown symbol set lose their affiliation unless the
@@ -221,31 +219,38 @@ Active combination rules:
 - Raw version/symbol-set codes outside milsymbol's known tables are reported.
 
 ```ts
-import { Sidc, SidcValidationError, SidcCombinationError, Context, StandardIdentity } from "milsymbol-sidc";
+import { Sidc, SidcValidationError, SidcCombinationError, Context, StandardIdentity, SymbolSet, Status } from "milsymbol-sidc";
 
 // Throws immediately: "9" is not a valid identity code.
 new Sidc().identity("9" as never); // SidcValidationError
 
-// Warns: faker only exists in exercise context.
-new Sidc().identity(StandardIdentity.Faker).toString();
+// Suspect/Joker and Hostile/Faker are dual-use: valid in reality AND exercise.
+new Sidc({ strict: true })
+  .identity(StandardIdentity.SuspectJoker) // Suspect in reality, Joker in exercises
+  .symbolSet(SymbolSet.LandUnit)
+  .toString(); // "13051000000000000000", no warnings
 
-// Throws instead of warning:
-const strict = new Sidc({ strict: true }).identity(StandardIdentity.Faker);
-strict.toString(); // SidcCombinationError
-
-// Correct usage: faker inside an exercise.
 new Sidc({ strict: true })
   .context(Context.Exercise)
-  .identity(StandardIdentity.Faker)
+  .identity(StandardIdentity.HostileFaker) // Faker in exercises
   .symbolSet(SymbolSet.LandUnit)
   .toString(); // "13161000000000000000", no warnings
+
+// A real combination problem: condition status on a control measure.
+new Sidc({ strict: true })
+  .symbolSet(SymbolSet.ControlMeasure)
+  .status(Status.Destroyed)
+  .toString(); // SidcCombinationError
 
 // Capturing warnings programmatically (e.g. in tests):
 const warnings: string[] = [];
 const originalWarn = console.warn;
 console.warn = (message: string) => warnings.push(message);
 try {
-  new Sidc().identity(StandardIdentity.Faker).toString();
+  new Sidc()
+    .symbolSet(SymbolSet.ControlMeasure)
+    .status(Status.Destroyed)
+    .toString();
 } finally {
   console.warn = originalWarn;
 }

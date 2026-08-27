@@ -36,7 +36,7 @@ describe("Sidc defaults", () => {
     const sidc = new Sidc()
       .version(Version.App6E)
       .context(Context.Simulation)
-      .identity(StandardIdentity.Faker)
+      .identity(StandardIdentity.HostileFaker)
       .symbolSet(SymbolSet.SeaSubsurface)
       .status(Status.Destroyed)
       .toString();
@@ -84,7 +84,7 @@ describe("field encoding (positions 1-7)", () => {
       "5"
     );
     assert.equal(
-      new Sidc().identity(StandardIdentity.Faker).toString().charAt(3),
+      new Sidc().identity(StandardIdentity.HostileFaker).toString().charAt(3),
       "6"
     );
   });
@@ -138,7 +138,9 @@ describe("immutability", () => {
   });
 
   it("carries strict mode through clones", () => {
-    const strict = new Sidc({ strict: true }).identity(StandardIdentity.Faker);
+    const strict = new Sidc({ strict: true })
+      .symbolSet(SymbolSet.ControlMeasure)
+      .status(Status.Destroyed);
     assert.throws(() => strict.toString(), SidcCombinationError);
   });
 });
@@ -177,7 +179,7 @@ describe("value validation", () => {
 });
 
 describe("combination validation", () => {
-  it("suspect identity is valid in reality context", () => {
+  it("suspect/joker identity is valid in reality context", () => {
     const warnings = captureWarnings(() => {
       new Sidc({ strict: true })
         .identity(StandardIdentity.SuspectJoker)
@@ -187,15 +189,17 @@ describe("combination validation", () => {
     assert.deepEqual(warnings, []);
   });
 
-  it("faker outside exercise context warns by default", () => {
+  it("hostile/faker identity is valid in reality context", () => {
     const warnings = captureWarnings(() => {
-      new Sidc().identity(StandardIdentity.Faker).toString();
+      new Sidc({ strict: true })
+        .identity(StandardIdentity.HostileFaker)
+        .symbolSet(SymbolSet.LandUnit)
+        .toString();
     });
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0]!, /exercise context/);
+    assert.deepEqual(warnings, []);
   });
 
-  it("suspect identity inside exercise context is clean", () => {
+  it("suspect/joker identity inside exercise context is clean", () => {
     const sidc = new Sidc({ strict: true })
       .context(Context.Exercise)
       .identity(StandardIdentity.SuspectJoker)
@@ -203,8 +207,18 @@ describe("combination validation", () => {
     assert.doesNotThrow(() => sidc.toString());
   });
 
+  it("hostile/faker identity inside exercise context is clean", () => {
+    const sidc = new Sidc({ strict: true })
+      .context(Context.Exercise)
+      .identity(StandardIdentity.HostileFaker)
+      .symbolSet(SymbolSet.LandUnit);
+    assert.doesNotThrow(() => sidc.toString());
+  });
+
   it("strict mode throws instead of warning", () => {
-    const sidc = new Sidc({ strict: true }).identity(StandardIdentity.Faker);
+    const sidc = new Sidc({ strict: true })
+      .symbolSet(SymbolSet.ControlMeasure)
+      .status(Status.Destroyed);
     assert.throws(() => sidc.toString(), SidcCombinationError);
   });
 
@@ -255,10 +269,10 @@ describe("combination validation", () => {
     assert.deepEqual(warnings, []);
   });
 
-  it("stacks multiple combination problems", () => {
+  it("stacks multiple problems", () => {
     const warnings = captureWarnings(() => {
       new Sidc()
-        .identity(StandardIdentity.Faker)
+        .version("99")
         .symbolSet(SymbolSet.ControlMeasure)
         .status(Status.Damaged)
         .toString();
@@ -274,7 +288,10 @@ describe("builder ergonomics", () => {
 
   it("accepts an empty options object as non-strict", () => {
     const warnings = captureWarnings(() => {
-      new Sidc({}).identity(StandardIdentity.Faker).toString();
+      new Sidc({})
+        .symbolSet(SymbolSet.ControlMeasure)
+        .status(Status.Damaged)
+        .toString();
     });
     assert.equal(warnings.length, 1);
   });
@@ -364,7 +381,11 @@ describe("error types", () => {
 
   it("combination errors extend SidcError", () => {
     assert.throws(
-      () => new Sidc({ strict: true }).identity(StandardIdentity.Faker).toString(),
+      () =>
+        new Sidc({ strict: true })
+          .symbolSet(SymbolSet.ControlMeasure)
+          .status(Status.Destroyed)
+          .toString(),
       (error: unknown) =>
         error instanceof SidcCombinationError && error instanceof Error
     );
