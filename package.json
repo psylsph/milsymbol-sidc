@@ -25,12 +25,24 @@
   "keywords": [
     "milsymbol",
     "sidc",
+    "symbol-identification-code",
     "mil-std-2525",
+    "mil-std-2525e",
+    "milstd2525",
     "milstd2525e",
     "app6",
+    "app-6",
+    "app6e",
+    "nato",
+    "joint-military-symbology",
     "military",
+    "military-symbology",
     "symbology",
-    "c2"
+    "tactical-graphics",
+    "c2",
+    "typescript",
+    "builder",
+    "fluent-api"
   ],
   "license": "MIT",
   "repository": {

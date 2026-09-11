@@ -1,5 +1,10 @@
 # milsymbol-sidc
 
+[![npm version](https://img.shields.io/npm/v/milsymbol-sidc.svg)](https://www.npmjs.com/package/milsymbol-sidc)
+[![npm downloads](https://img.shields.io/npm/dm/milsymbol-sidc.svg)](https://www.npmjs.com/package/milsymbol-sidc)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-%E2%89%A55.7-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
 A fluent TypeScript builder for **20-character numeric SIDC strings** — the
 symbol identification code format used by [MIL-STD-2525E](https://en.wikipedia.org/wiki/MIL-STD-2525)
 and [APP-6](https://en.wikipedia.org/wiki/NATO_Joint_Military_Symbology) — made
@@ -32,6 +37,7 @@ new ms.Symbol(sidc).asSVG(); // friendly land unit icon
 
 ## Installation
 
+Published on npm as [`milsymbol-sidc`](https://www.npmjs.com/package/milsymbol-sidc).
 Requires Node.js >= 18.
 
 ```bash
