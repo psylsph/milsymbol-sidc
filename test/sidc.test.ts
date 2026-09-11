@@ -5,6 +5,8 @@ import {
   Context,
   Sidc,
   SidcCombinationError,
+  Amplifier,
+  HqTaskForceDummy,
   SidcValidationError,
   Standard,
   StandardIdentity,
@@ -49,11 +51,11 @@ describe("standard configuration", () => {
   it("defaults APP-6 and MIL-STD-2525 to their latest editions", () => {
     assert.equal(
       new Sidc({ standard: Standard.App6 }).toString(),
-      "14010000000000000000"
+      "14010000000000000000",
     );
     assert.equal(
       new Sidc({ standard: Standard.MilStd2525 }).toString(),
-      "13010000000000000000"
+      "13010000000000000000",
     );
   });
 
@@ -67,9 +69,7 @@ describe("standard configuration", () => {
   });
 
   it("retains a version that already belongs to the selected family", () => {
-    const app6d = new Sidc()
-      .version(Version.App6D)
-      .standard(Standard.App6);
+    const app6d = new Sidc().version(Version.App6D).standard(Standard.App6);
     assert.equal(app6d.toString().slice(0, 2), Version.App6D);
   });
 
@@ -94,7 +94,7 @@ describe("standard configuration", () => {
         new Sidc({ strict: true, standard: Standard.App6 })
           .version(Version.MilStd2525E)
           .toString(),
-      SidcCombinationError
+      SidcCombinationError,
     );
   });
 
@@ -122,11 +122,11 @@ describe("standard configuration", () => {
   it("rejects unknown standard configuration values", () => {
     assert.throws(
       () => new Sidc({ standard: "NATO" as never }),
-      SidcValidationError
+      SidcValidationError,
     );
     assert.throws(
       () => new Sidc().standard("NATO" as never),
-      SidcValidationError
+      SidcValidationError,
     );
   });
 
@@ -137,48 +137,297 @@ describe("standard configuration", () => {
   });
 });
 
+describe("extended field encoding (positions 8-20)", () => {
+  it("encodes every headquarters/task-force/feint-dummy value at position 8", () => {
+    for (const code of Object.values(HqTaskForceDummy)) {
+      const rendered = new Sidc().hqTaskForceDummy(code).toString();
+      assert.equal(rendered.charAt(7), code);
+      assert.match(rendered, /^\d{20}$/);
+    }
+  });
+
+  it("encodes every amplifier value at positions 9-10", () => {
+    for (const code of Object.values(Amplifier)) {
+      const rendered = new Sidc().amplifier(code).toString();
+      assert.equal(rendered.slice(8, 10), code);
+      assert.match(rendered, /^\d{20}$/);
+    }
+  });
+
+  it("encodes all extended fields in order", () => {
+    const rendered = new Sidc()
+      .identity(StandardIdentity.Friend)
+      .symbolSet(SymbolSet.LandUnit)
+      .hqTaskForceDummy(HqTaskForceDummy.TaskForce)
+      .amplifier(Amplifier.BattalionSquadron)
+      .entity("123456")
+      .modifier1("78")
+      .modifier2("90")
+      .toString();
+
+    assert.equal(rendered, "13031004161234567890");
+    assert.equal(rendered.slice(7, 8), HqTaskForceDummy.TaskForce);
+    assert.equal(rendered.slice(8, 10), Amplifier.BattalionSquadron);
+    assert.equal(rendered.slice(10, 16), "123456");
+    assert.equal(rendered.slice(16, 18), "78");
+    assert.equal(rendered.slice(18, 20), "90");
+  });
+
+  it("preserves raw entity codes including leading zeroes", () => {
+    for (const code of ["000000", "000001", "999999"]) {
+      const rendered = new Sidc().entity(code).toString();
+      assert.equal(rendered.slice(10, 16), code);
+    }
+  });
+
+  it("preserves raw modifier codes independently", () => {
+    const rendered = new Sidc().modifier1("01").modifier2("09").toString();
+    assert.equal(rendered.slice(16, 18), "01");
+    assert.equal(rendered.slice(18, 20), "09");
+  });
+
+  it("does not warn for well-shaped raw entity and modifier codes", () => {
+    const warnings = captureWarnings(() => {
+      new Sidc({ strict: true })
+        .entity("123456")
+        .modifier1("01")
+        .modifier2("09")
+        .toString();
+    });
+    assert.deepEqual(warnings, []);
+  });
+
+  it("rejects malformed or unknown extended values immediately", () => {
+    assert.throws(
+      () => new Sidc().hqTaskForceDummy("8" as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc().amplifier("99" as never),
+      SidcValidationError,
+    );
+
+    for (const value of [
+      "",
+      "12345",
+      "1234567",
+      "12345A",
+      " 12345",
+      "+12345",
+      "12.345",
+      "123456\n",
+      "123456\n\n",
+    ]) {
+      assert.throws(() => new Sidc().entity(value), SidcValidationError);
+    }
+    assert.throws(
+      () => new Sidc().entity(123456 as never),
+      SidcValidationError,
+    );
+
+    for (const value of ["", "1", "123", "0A", " 1", "+1", "1.2", "01\n"]) {
+      assert.throws(() => new Sidc().modifier1(value), SidcValidationError);
+      assert.throws(() => new Sidc().modifier2(value), SidcValidationError);
+    }
+  });
+
+  it("normalizes legacy constructor field records", () => {
+    const rendered = new Sidc(
+      {},
+      {
+        version: Version.MilStd2525E,
+        context: Context.Reality,
+        identity: StandardIdentity.Friend,
+        symbolSet: SymbolSet.LandUnit,
+        status: Status.Present,
+      },
+    ).toString();
+    assert.equal(rendered, "13031000000000000000");
+  });
+
+  it("normalizes explicitly undefined constructor tail fields", () => {
+    const rendered = new Sidc(
+      {},
+      {
+        hqTaskForceDummy: undefined,
+        amplifier: undefined,
+        entity: undefined,
+        modifier1: undefined,
+        modifier2: undefined,
+      },
+    ).toString();
+    assert.equal(rendered, "13010000000000000000");
+    assert.equal(rendered.length, 20);
+  });
+
+  it("rejects malformed constructor field records", () => {
+    assert.throws(
+      () => new Sidc({}, { entity: "ABCDEF" }),
+      SidcValidationError,
+    );
+    assert.throws(() => new Sidc({}, { entity: "12345" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { modifier1: "1" }), SidcValidationError);
+    assert.throws(
+      () => new Sidc({}, { modifier2: "abc" }),
+      SidcValidationError,
+    );
+    assert.throws(() => new Sidc({}, { version: "1" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { version: "1\n" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { symbolSet: "1" }), SidcValidationError);
+    assert.throws(
+      () => new Sidc({}, { symbolSet: "1\n" }),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc({}, { hqTaskForceDummy: "8" }),
+      SidcValidationError,
+    );
+    assert.throws(() => new Sidc({}, { amplifier: "99" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { context: "9" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { identity: "9" }), SidcValidationError);
+    assert.throws(() => new Sidc({}, { status: "9" }), SidcValidationError);
+    assert.throws(
+      () => new Sidc({}, { standard: "NATO" as never }),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc({}, { standard: null as never }),
+      SidcValidationError,
+    );
+  });
+
+  it("treats a null field record as omitted and validates options.standard", () => {
+    assert.equal(new Sidc({}, null).toString(), "13010000000000000000");
+    assert.throws(
+      () =>
+        new Sidc(
+          { standard: "NATO" as never },
+          {
+            standard: Standard.App6,
+          },
+        ),
+      SidcValidationError,
+    );
+  });
+
+  it("keeps every construction path at exactly 20 characters", () => {
+    const valid = [
+      new Sidc(),
+      new Sidc({}, { entity: "000001" }),
+      new Sidc({}, { entity: undefined }),
+      new Sidc(
+        {},
+        {
+          version: "13",
+          context: "0",
+          identity: "3",
+          symbolSet: "10",
+          status: "0",
+        },
+      ),
+      new Sidc()
+        .hqTaskForceDummy(HqTaskForceDummy.Headquarters)
+        .amplifier(Amplifier.Brigade),
+    ];
+    for (const sidc of valid) {
+      const rendered = sidc.toString();
+      assert.equal(rendered.length, 20);
+      assert.match(rendered, /^[0-9]{20}$/);
+    }
+  });
+
+  it("keeps extended fields immutable across branches", () => {
+    const base = new Sidc()
+      .hqTaskForceDummy(HqTaskForceDummy.Headquarters)
+      .amplifier(Amplifier.Brigade)
+      .entity("123456")
+      .modifier1("01")
+      .modifier2("02");
+    const branch = base.entity("654321");
+    const sibling = base.modifier1("09");
+
+    assert.equal(base.toString(), "13010002181234560102");
+    assert.equal(branch.toString(), "13010002186543210102");
+    assert.equal(sibling.toString(), "13010002181234560902");
+  });
+
+  it("uses the last value set for each extended field", () => {
+    const rendered = new Sidc()
+      .hqTaskForceDummy(HqTaskForceDummy.TaskForce)
+      .hqTaskForceDummy(HqTaskForceDummy.None)
+      .amplifier(Amplifier.Brigade)
+      .amplifier(Amplifier.None)
+      .entity("123456")
+      .entity("654321")
+      .modifier1("01")
+      .modifier1("09")
+      .modifier2("02")
+      .modifier2("08")
+      .toString();
+    assert.equal(rendered, "13010000006543210908");
+  });
+});
+
 describe("field encoding (positions 1-7)", () => {
   it("encodes version at positions 1-2", () => {
-    assert.equal(new Sidc().version(Version.MilStd2525E).toString().slice(0, 2), "13");
-    assert.equal(new Sidc().version(Version.App6E).toString().slice(0, 2), "14");
-    assert.equal(new Sidc().version(Version.MilStd2525D).toString().slice(0, 2), "10");
-    assert.equal(new Sidc().version(Version.App6D).toString().slice(0, 2), "11");
+    assert.equal(
+      new Sidc().version(Version.MilStd2525E).toString().slice(0, 2),
+      "13",
+    );
+    assert.equal(
+      new Sidc().version(Version.App6E).toString().slice(0, 2),
+      "14",
+    );
+    assert.equal(
+      new Sidc().version(Version.MilStd2525D).toString().slice(0, 2),
+      "10",
+    );
+    assert.equal(
+      new Sidc().version(Version.App6D).toString().slice(0, 2),
+      "11",
+    );
   });
 
   it("encodes context at position 3", () => {
     assert.equal(new Sidc().context(Context.Reality).toString().charAt(2), "0");
-    assert.equal(new Sidc().context(Context.Exercise).toString().charAt(2), "1");
-    assert.equal(new Sidc().context(Context.Simulation).toString().charAt(2), "2");
+    assert.equal(
+      new Sidc().context(Context.Exercise).toString().charAt(2),
+      "1",
+    );
+    assert.equal(
+      new Sidc().context(Context.Simulation).toString().charAt(2),
+      "2",
+    );
   });
 
   it("encodes standard identity at position 4", () => {
     assert.equal(
       new Sidc().identity(StandardIdentity.Pending).toString().charAt(3),
-      "0"
+      "0",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.Unknown).toString().charAt(3),
-      "1"
+      "1",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.AssumedFriend).toString().charAt(3),
-      "2"
+      "2",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.Friend).toString().charAt(3),
-      "3"
+      "3",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.Neutral).toString().charAt(3),
-      "4"
+      "4",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.SuspectJoker).toString().charAt(3),
-      "5"
+      "5",
     );
     assert.equal(
       new Sidc().identity(StandardIdentity.HostileFaker).toString().charAt(3),
-      "6"
+      "6",
     );
   });
 
@@ -193,10 +442,16 @@ describe("field encoding (positions 1-7)", () => {
   it("encodes status at position 7", () => {
     assert.equal(new Sidc().status(Status.Present).toString().charAt(6), "0");
     assert.equal(new Sidc().status(Status.Planned).toString().charAt(6), "1");
-    assert.equal(new Sidc().status(Status.FullyCapable).toString().charAt(6), "2");
+    assert.equal(
+      new Sidc().status(Status.FullyCapable).toString().charAt(6),
+      "2",
+    );
     assert.equal(new Sidc().status(Status.Damaged).toString().charAt(6), "3");
     assert.equal(new Sidc().status(Status.Destroyed).toString().charAt(6), "4");
-    assert.equal(new Sidc().status(Status.FullToCapacity).toString().charAt(6), "5");
+    assert.equal(
+      new Sidc().status(Status.FullToCapacity).toString().charAt(6),
+      "5",
+    );
   });
 });
 
@@ -224,7 +479,9 @@ describe("worked examples", () => {
 describe("immutability", () => {
   it("leaves the base instance untouched after chaining", () => {
     const base = new Sidc();
-    const derived = base.identity(StandardIdentity.Friend).status(Status.Damaged);
+    const derived = base
+      .identity(StandardIdentity.Friend)
+      .status(Status.Damaged);
     assert.notEqual(base, derived);
     assert.equal(base.toString(), "13010000000000000000");
     assert.equal(derived.toString(), "13030030000000000000");
@@ -243,12 +500,37 @@ describe("value validation", () => {
     assert.throws(() => new Sidc().version("9X"), SidcValidationError);
     assert.throws(() => new Sidc().version("1"), SidcValidationError);
     assert.throws(() => new Sidc().context("9" as never), SidcValidationError);
-    assert.throws(
-      () => new Sidc().identity("9" as never),
-      SidcValidationError
-    );
+    assert.throws(() => new Sidc().identity("9" as never), SidcValidationError);
     assert.throws(() => new Sidc().symbolSet("1"), SidcValidationError);
     assert.throws(() => new Sidc().status("9" as never), SidcValidationError);
+  });
+
+  it("rejects non-string and whitespace-padded escape-hatch values", () => {
+    assert.throws(() => new Sidc().version(12 as never), SidcValidationError);
+    assert.throws(() => new Sidc().symbolSet(12 as never), SidcValidationError);
+    for (const value of ["12\n", "12 ", " 12", "\t12"]) {
+      assert.throws(() => new Sidc().version(value), SidcValidationError);
+      assert.throws(() => new Sidc().symbolSet(value), SidcValidationError);
+    }
+  });
+
+  it("reports unstringifiable non-string values as validation errors", () => {
+    assert.throws(
+      () => new Sidc().entity(Symbol("x") as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc().modifier1(Object.create(null) as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc().version(Symbol("x") as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc({}, { entity: Symbol("x") as never }),
+      SidcValidationError,
+    );
   });
 
   it("accepts raw two-digit version and symbol set codes", () => {
@@ -343,7 +625,10 @@ describe("combination validation", () => {
         .version(Version.MilStd2525D)
         .symbolSet(SymbolSet.LandDismountedIndividual)
         .toString();
-      new Sidc().version(Version.App6D).symbolSet(SymbolSet.Cyberspace).toString();
+      new Sidc()
+        .version(Version.App6D)
+        .symbolSet(SymbolSet.Cyberspace)
+        .toString();
     });
     assert.deepEqual(warnings, [
       "[milsymbol-sidc] Symbol set 27 (dismounted individual) is not supported by MIL-STD-2525D.",
@@ -403,7 +688,9 @@ describe("builder ergonomics", () => {
   });
 
   it("returns the same string on repeated calls", () => {
-    const sidc = new Sidc().identity(StandardIdentity.Neutral).symbolSet(SymbolSet.Space);
+    const sidc = new Sidc()
+      .identity(StandardIdentity.Neutral)
+      .symbolSet(SymbolSet.Space);
     assert.equal(sidc.toString(), sidc.toString());
   });
 
@@ -430,7 +717,7 @@ describe("builder ergonomics", () => {
     }
     for (const symbolSet of Object.values(SymbolSet)) {
       assert.doesNotThrow(() =>
-        new Sidc({ strict: false }).symbolSet(symbolSet)
+        new Sidc({ strict: false }).symbolSet(symbolSet),
       );
     }
   });
@@ -441,9 +728,7 @@ describe("raw code escape hatch", () => {
     const warnings = captureWarnings(() => {
       const rendered = new Sidc().symbolSet("39").toString();
       assert.equal(rendered.slice(4, 6), "39");
-      assert.doesNotThrow(() =>
-        new Sidc().version("12").toString()
-      );
+      assert.doesNotThrow(() => new Sidc().version("12").toString());
     });
     assert.deepEqual(warnings, []);
   });
@@ -459,7 +744,7 @@ describe("raw code escape hatch", () => {
   it("throws in strict mode on unrecognized raw codes", () => {
     assert.throws(
       () => new Sidc({ strict: true }).version("99").toString(),
-      SidcCombinationError
+      SidcCombinationError,
     );
   });
 });
@@ -469,7 +754,7 @@ describe("error types", () => {
     assert.throws(
       () => new Sidc().identity("9" as never),
       (error: unknown) =>
-        error instanceof SidcValidationError && error instanceof Error
+        error instanceof SidcValidationError && error instanceof Error,
     );
   });
 
@@ -481,7 +766,7 @@ describe("error types", () => {
           .status(Status.Destroyed)
           .toString(),
       (error: unknown) =>
-        error instanceof SidcCombinationError && error instanceof Error
+        error instanceof SidcCombinationError && error instanceof Error,
     );
   });
 

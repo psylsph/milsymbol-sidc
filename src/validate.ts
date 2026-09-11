@@ -1,5 +1,7 @@
 import {
+  Amplifier,
   Context,
+  HqTaskForceDummy,
   Standard,
   StandardIdentity,
   Status,
@@ -14,6 +16,11 @@ export interface SidcFields {
   identity: string;
   symbolSet: string;
   status: string;
+  hqTaskForceDummy: string;
+  amplifier: string;
+  entity: string;
+  modifier1: string;
+  modifier2: string;
   /** Optional standard-family configuration used for defaults and validation. */
   standard?: Standard;
 }
@@ -41,6 +48,7 @@ export class SidcCombinationError extends SidcError {
   }
 }
 
+const SIX_DIGITS = /^\d{6}$/;
 const TWO_DIGITS = /^\d{2}$/;
 const ONE_DIGIT = /^\d$/;
 
@@ -52,6 +60,14 @@ const KNOWN_SYMBOL_SETS: readonly string[] = [
   "12",
   "39",
 ];
+
+const KNOWN_HQ_TASK_FORCE_DUMMY: readonly string[] =
+  Object.values(HqTaskForceDummy);
+const KNOWN_AMPLIFIERS: readonly string[] = Object.values(Amplifier);
+const KNOWN_STANDARDS: readonly string[] = Object.values(Standard);
+const KNOWN_CONTEXTS: readonly string[] = Object.values(Context);
+const KNOWN_IDENTITIES: readonly string[] = Object.values(StandardIdentity);
+const KNOWN_STATUSES: readonly string[] = Object.values(Status);
 
 const STANDARD_DEFAULT_VERSIONS: Readonly<Record<Standard, Version>> = {
   [Standard.MilStd2525]: Version.MilStd2525E,
@@ -100,10 +116,24 @@ export function standardForVersion(version: string): Standard | undefined {
   return VERSION_STANDARDS[version];
 }
 
-function assertDigits(name: string, value: string, pattern: RegExp, length: number): void {
-  if (!pattern.test(value)) {
+/** Renders any runtime value for an error message without ever throwing. */
+function describeValue(value: unknown): string {
+  try {
+    return `"${String(value)}"`;
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function assertDigits(
+  name: string,
+  value: string,
+  pattern: RegExp,
+  length: number,
+): void {
+  if (typeof value !== "string" || !pattern.test(value)) {
     throw new SidcValidationError(
-      `${name} must be ${length} digit(s), got "${value}".`
+      `${name} must be ${length} digit(s), got ${describeValue(value)}.`,
     );
   }
 }
@@ -116,6 +146,82 @@ export function checkTwoDigitField(name: string, value: string): void {
 /** @internal Validates a single-digit field (context, identity, status). */
 export function checkOneDigitField(name: string, value: string): void {
   assertDigits(name, value, ONE_DIGIT, 1);
+}
+
+/** @internal Validates a six-digit entity field. */
+export function checkSixDigitField(name: string, value: string): void {
+  assertDigits(name, value, SIX_DIGITS, 6);
+}
+
+/** @internal Validates a named position-8 value. */
+export function checkHqTaskForceDummy(value: string): void {
+  checkOneDigitField("HQ/task force/feint-dummy", value);
+  if (!KNOWN_HQ_TASK_FORCE_DUMMY.includes(value)) {
+    throw new SidcValidationError(
+      `Unknown HQ/task force/feint-dummy code "${value}".`,
+    );
+  }
+}
+
+/** @internal Validates a named amplifier value. */
+export function checkAmplifier(value: string): void {
+  checkTwoDigitField("Amplifier", value);
+  if (!KNOWN_AMPLIFIERS.includes(value)) {
+    throw new SidcValidationError(`Unknown amplifier code "${value}".`);
+  }
+}
+
+/** @internal Validates a standard-family value. */
+export function checkStandard(standard: string): void {
+  if (!KNOWN_STANDARDS.includes(standard)) {
+    throw new SidcValidationError(`Unknown standard "${standard}".`);
+  }
+}
+
+/** @internal Validates a context value. */
+export function checkContext(value: string): void {
+  checkOneDigitField("Context", value);
+  if (!KNOWN_CONTEXTS.includes(value)) {
+    throw new SidcValidationError(`Unknown context code "${value}".`);
+  }
+}
+
+/** @internal Validates a standard-identity value. */
+export function checkIdentity(value: string): void {
+  checkOneDigitField("Standard identity", value);
+  if (!KNOWN_IDENTITIES.includes(value)) {
+    throw new SidcValidationError(`Unknown standard identity code "${value}".`);
+  }
+}
+
+/** @internal Validates a status/condition value. */
+export function checkStatus(value: string): void {
+  checkOneDigitField("Status", value);
+  if (!KNOWN_STATUSES.includes(value)) {
+    throw new SidcValidationError(`Unknown status code "${value}".`);
+  }
+}
+
+/**
+ * @internal Validates a complete field record.
+ *
+ * The constructor uses this so every construction path enforces the same
+ * digit-width and enum-membership invariants as the fluent setters.
+ */
+export function checkFields(fields: SidcFields): void {
+  if (fields.standard !== undefined) {
+    checkStandard(fields.standard);
+  }
+  checkTwoDigitField("Version", fields.version);
+  checkContext(fields.context);
+  checkIdentity(fields.identity);
+  checkTwoDigitField("Symbol set", fields.symbolSet);
+  checkStatus(fields.status);
+  checkHqTaskForceDummy(fields.hqTaskForceDummy);
+  checkAmplifier(fields.amplifier);
+  checkSixDigitField("Entity", fields.entity);
+  checkTwoDigitField("Modifier 1", fields.modifier1);
+  checkTwoDigitField("Modifier 2", fields.modifier2);
 }
 
 /**
@@ -134,7 +240,9 @@ export function findCombinationProblems(fields: SidcFields): string[] {
     versionStandard !== standard
   ) {
     problems.push(
-      `Version "${version}" (${EDITION_NAMES[version]}) belongs to ${STANDARD_NAMES[versionStandard]}, not the configured ${STANDARD_NAMES[standard]} standard.`
+      `Version "${version}" (${EDITION_NAMES[version]}) belongs to ` +
+        `${STANDARD_NAMES[versionStandard]}, not the configured ` +
+        `${STANDARD_NAMES[standard]} standard.`,
     );
   }
 
@@ -145,7 +253,7 @@ export function findCombinationProblems(fields: SidcFields): string[] {
     symbolSet === SymbolSet.ControlMeasure
   ) {
     problems.push(
-      `Condition status "${status}" does not apply to the control measure symbol set.`
+      `Condition status "${status}" does not apply to the control measure symbol set.`,
     );
   }
 
@@ -157,14 +265,16 @@ export function findCombinationProblems(fields: SidcFields): string[] {
     identity !== StandardIdentity.Unknown
   ) {
     problems.push(
-      "Exercise symbols on the unknown symbol set render without affiliation unless identity is pending/unknown."
+      "Exercise symbols on the unknown symbol set render without affiliation " +
+        "unless identity is pending/unknown.",
     );
   }
 
   // Symbol sets missing from specific standards' handler lists.
   if (UNSUPPORTED_SYMBOL_SETS[version]?.includes(symbolSet)) {
     problems.push(
-      `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not supported by ${EDITION_NAMES[version]}.`
+      `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not ` +
+        `supported by ${EDITION_NAMES[version]}.`,
     );
   }
 
@@ -175,12 +285,17 @@ export function findCombinationProblems(fields: SidcFields): string[] {
  * Checks that a raw version/symbol-set code is at least recognized by
  * milsymbol's parser; returns a warning message when it is not.
  */
-export function unrecognizedCodeWarning(name: string, value: string, known: readonly string[]): string | undefined {
+export function unrecognizedCodeWarning(
+  name: string,
+  value: string,
+  known: readonly string[],
+): string | undefined {
   if (!known.includes(value)) {
     return `Unrecognized ${name} code "${value}".`;
   }
   return undefined;
 }
 
-export const knownVersions = KNOWN_VERSIONS;
-export const knownSymbolSets = KNOWN_SYMBOL_SETS;
+export const knownVersions: readonly string[] = Object.freeze(KNOWN_VERSIONS);
+export const knownSymbolSets: readonly string[] =
+  Object.freeze(KNOWN_SYMBOL_SETS);

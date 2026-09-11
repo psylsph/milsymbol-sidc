@@ -1,5 +1,7 @@
 export {
+  Amplifier,
   Context,
+  HqTaskForceDummy,
   Standard,
   StandardIdentity,
   Status,

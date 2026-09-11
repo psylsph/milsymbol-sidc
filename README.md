@@ -12,6 +12,7 @@ for constructing symbols with the
 [milsymbol](https://github.com/spatialillusions/milsymbol) library.
 
 ```ts
+import ms from "milsymbol";
 import { Sidc, StandardIdentity, SymbolSet } from "milsymbol-sidc";
 
 const sidc = new Sidc()
@@ -28,12 +29,14 @@ new ms.Symbol(sidc).asSVG(); // friendly land unit icon
 - **Validated output** — invalid values throw; inconsistent combinations warn
   (or throw in `strict` mode), using the same rules milsymbol applies when it
   parses a SIDC.
-- **milsymbol-ready** — positions 8–20 are zero-filled so every generated
-  string is accepted by `new ms.Symbol(...)` out of the box.
+- **milsymbol-ready** — every generated 20-character string is accepted by
+  milsymbol's numeric parser. Full rendering depends on the entity and
+  modifier codes you supply, exactly as it does for any raw SIDC.
 
-> **Coverage:** positions 1–7 of the numeric SIDC (version, context, standard
-> identity, symbol set, status). Positions 8–20 (HQ/task force/dummy, echelon,
-> entity code, sector modifiers) are reserved for future releases.
+> **Coverage:** complete structural encoding for positions 1–20 of the numeric
+> SIDC. Positions 8–10 have named universal codes; positions 11–20 accept
+> validated raw entity and modifier codes. Symbol-set-specific entity and
+> modifier catalogs remain future work.
 
 ## Installation
 
@@ -46,6 +49,15 @@ npm install milsymbol-sidc
 yarn add milsymbol-sidc
 # or
 pnpm add milsymbol-sidc
+```
+
+The rendering examples use [`milsymbol`](https://github.com/spatialillusions/milsymbol)
+to draw the generated SIDC. It is **not** a dependency of this package —
+`milsymbol-sidc` has zero runtime dependencies — so install it alongside when
+you want to render symbols:
+
+```bash
+npm install milsymbol
 ```
 
 The package ships ESM with bundled TypeScript declarations (`dist/`).
@@ -79,6 +91,8 @@ The builder is **immutable**: each setter returns a new instance, so a base
 configuration can be safely reused:
 
 ```ts
+import { Sidc, Standard, StandardIdentity } from "milsymbol-sidc";
+
 const base = new Sidc({ standard: Standard.App6 });
 
 const friendly = base.identity(StandardIdentity.Friend).toString();
@@ -88,24 +102,33 @@ const hostile = base.identity(StandardIdentity.SuspectJoker).toString();
 
 ## Anatomy of the generated SIDC
 
-```
-1 3 0 3 1 0 | 0 0 0 0 0 0 0 0 0 0 0 0 0
-└─┬─┘ │ │ └─┬─┘ └──────────┬───────────┘
-  │   │ │   │              zero-filled (future fields)
-  │   │ │   └ status (7)
-  │   │ └ symbol set (5-6)
-  │   └ standard identity (4)
-  └ context (3)
-  version (1-2)
+```text
+13 0 3 10 0 2 16 123456 78 90
+│  │ │ │  │ │ │  │      │  │
+│  │ │ │  │ │ │  │      │  └   modifier 2 (19–20)
+│  │ │ │  │ │ │  │      └  │   modifier 1 (17–18)
+│  │ │ │  │ │ │  └      │  │   entity code (11–16)
+│  │ │ │  │ │ └  │      │  │   amplifier (9–10)
+│  │ │ │  │ └ │  │      │  │   HQ/task force/feint-dummy (8)
+│  │ │ │  └ │ │  │      │  │   status (7)
+│  │ │ └  │ │ │  │      │  │   symbol set (5–6)
+│  │ └ │  │ │ │  │      │  │   standard identity (4)
+│  └ │ │  │ │ │  │      │  │   context (3)
+└  │ │ │  │ │ │  │      │  │   version / edition (1–2)
 ```
 
-| Position | Field | Enum |
+| Position | Field | API |
 | -------- | ------------------ | ----------------- |
-| 1–2 | Version / edition | `Version` |
-| 3 | Context | `Context` |
-| 4 | Standard identity | `StandardIdentity` |
-| 5–6 | Symbol set | `SymbolSet` |
-| 7 | Status / condition | `Status` |
+| 1–2 | Version / edition | `Version`, `version()` |
+| 3 | Context | `Context`, `context()` |
+| 4 | Standard identity | `StandardIdentity`, `identity()` |
+| 5–6 | Symbol set | `SymbolSet`, `symbolSet()` |
+| 7 | Status / condition | `Status`, `status()` |
+| 8 | HQ/task force/feint-dummy | `HqTaskForceDummy`, `hqTaskForceDummy()` |
+| 9–10 | Amplifier | `Amplifier`, `amplifier()` |
+| 11–16 | Entity code | `entity()` — six raw digits |
+| 17–18 | Modifier 1 | `modifier1()` — two raw digits |
+| 19–20 | Modifier 2 | `modifier2()` — two raw digits |
 
 ## API
 
@@ -132,6 +155,11 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `identity(i)` | Position 4 | A `StandardIdentity` constant |
 | `symbolSet(s)` | Positions 5–6 | A `SymbolSet` constant or any two-digit string |
 | `status(s)` | Position 7 | A `Status` constant |
+| `hqTaskForceDummy(v)` | Position 8 | An `HqTaskForceDummy` constant |
+| `amplifier(v)` | Positions 9–10 | An `Amplifier` constant |
+| `entity(v)` | Positions 11–16 | Any six-digit string; symbol-set-specific catalogs are not included |
+| `modifier1(v)` | Positions 17–18 | Any two-digit string; symbol-set-specific catalogs are not included |
+| `modifier2(v)` | Positions 19–20 | Any two-digit string; symbol-set-specific catalogs are not included |
 | `toString()` | — | Validates combinations and renders the 20-character SIDC |
 
 ### Enum reference
@@ -145,6 +173,63 @@ same constant can configure both libraries.
 | -------- | ----- | --------------- |
 | `MilStd2525` | `"2525"` | US MIL-STD-2525 (**default behavior when omitted**) |
 | `App6` | `"APP6"` | NATO APP-6 |
+
+#### `HqTaskForceDummy`
+
+Position 8 values identify headquarters, task force, and feint/dummy variants.
+
+| Constant | Code | Meaning |
+| -------- | ---- | ------- |
+| `None` | `"0"` | None / not applicable |
+| `FeintDummy` | `"1"` | Feint/dummy |
+| `Headquarters` | `"2"` | Headquarters |
+| `FeintDummyHeadquarters` | `"3"` | Feint/dummy headquarters |
+| `TaskForce` | `"4"` | Task force |
+| `FeintDummyTaskForce` | `"5"` | Feint/dummy task force |
+| `TaskForceHeadquarters` | `"6"` | Task-force headquarters |
+| `FeintDummyTaskForceHeadquarters` | `"7"` | Feint/dummy task-force headquarters |
+
+#### `Amplifier`
+
+Position 9–10 values identify echelon, mobility, leadership, or auxiliary
+amplifiers. `None` writes the zero/no-amplifier code `"00"`.
+
+| Constant | Code | Meaning |
+| -------- | ---- | ------- |
+| `None` | `"00"` | None / not specified |
+| `TeamCrew` | `"11"` | Team/crew |
+| `Squad` | `"12"` | Squad |
+| `Section` | `"13"` | Section |
+| `PlatoonDetachment` | `"14"` | Platoon/detachment |
+| `CompanyBatteryTroop` | `"15"` | Company/battery/troop |
+| `BattalionSquadron` | `"16"` | Battalion/squadron |
+| `RegimentGroup` | `"17"` | Regiment/group |
+| `Brigade` | `"18"` | Brigade |
+| `Division` | `"21"` | Division |
+| `CorpsMef` | `"22"` | Corps/MEF |
+| `Army` | `"23"` | Army |
+| `ArmyGroupFront` | `"24"` | Army group/front |
+| `RegionTheater` | `"25"` | Region/theater |
+| `Command` | `"26"` | Command |
+| `WheeledLimitedCrossCountry` | `"31"` | Wheeled, limited cross-country |
+| `WheeledCrossCountry` | `"32"` | Wheeled, cross-country |
+| `Tracked` | `"33"` | Tracked |
+| `WheeledTrackedCombination` | `"34"` | Wheeled and tracked combination |
+| `Towed` | `"35"` | Towed |
+| `Rail` | `"36"` | Rail |
+| `PackAnimals` | `"37"` | Pack animals |
+| `OverSnowPrimeMover` | `"41"` | Over snow, prime mover |
+| `Sled` | `"42"` | Sled |
+| `Barge` | `"51"` | Barge |
+| `Amphibious` | `"52"` | Amphibious |
+| `ShortTowedArray` | `"61"` | Short towed array |
+| `LongTowedArray` | `"62"` | Long towed array |
+| `LeaderIndividual` | `"71"` | Leader individual |
+| `DeputyIndividual` | `"72"` | Deputy individual |
+
+Entity and modifier setters intentionally accept raw digit strings so callers
+can use codes specific to their symbol set and edition. They validate width and
+ASCII digits but do not validate catalog membership.
 
 #### `Version`
 
@@ -222,8 +307,10 @@ string escape hatch.
 Two layers of validation run at different times:
 
 1. **Setter-time (`SidcValidationError`)** — thrown immediately for malformed
-   input (wrong number of digits) or unknown enum codes. This catches bugs at
-   the call site rather than deep inside rendering code.
+   input (wrong number of digits) or unknown enum codes. Values must be
+   strings: passing a number or other non-string value throws rather than
+   being coerced. This catches bugs at the call site rather than deep inside
+   rendering code.
 2. **`toString()`-time combination checks** — cross-field rules mirroring
    milsymbol's parser. By default problems are emitted with `console.warn`;
    with `{ strict: true }` they throw `SidcCombinationError`.
@@ -241,7 +328,18 @@ Active combination rules:
 - Raw version/symbol-set codes outside milsymbol's known tables are reported.
 
 ```ts
-import { Sidc, SidcValidationError, SidcCombinationError, Context, StandardIdentity, SymbolSet, Status } from "milsymbol-sidc";
+import {
+  Amplifier,
+  Context,
+  HqTaskForceDummy,
+  Sidc,
+  SidcCombinationError,
+  SidcValidationError,
+  Standard,
+  StandardIdentity,
+  Status,
+  SymbolSet,
+} from "milsymbol-sidc";
 
 // Throws immediately: "9" is not a valid identity code.
 new Sidc().identity("9" as never); // SidcValidationError
@@ -257,6 +355,17 @@ new Sidc({ strict: true })
   .identity(StandardIdentity.HostileFaker) // Faker in exercises
   .symbolSet(SymbolSet.LandUnit)
   .toString(); // "13161000000000000000", no warnings
+
+// A complete structural 20-position SIDC using raw entity/modifier codes.
+new Sidc({ standard: Standard.App6, strict: true })
+  .identity(StandardIdentity.Friend)
+  .symbolSet(SymbolSet.LandUnit)
+  .hqTaskForceDummy(HqTaskForceDummy.Headquarters)
+  .amplifier(Amplifier.BattalionSquadron)
+  .entity("123456")
+  .modifier1("01")
+  .modifier2("09")
+  .toString(); // "14031002161234560109"
 
 // A real combination problem: condition status on a control measure.
 new Sidc({ strict: true })
@@ -310,10 +419,28 @@ const svg = symbol.asSVG();
 
 ### Node.js (CommonJS)
 
+`milsymbol-sidc` is ESM-only. From CommonJS, load it with dynamic `import()`.
+`milsymbol` itself can be `require`d directly:
+
 ```js
 const ms = require("milsymbol");
-// same API as above
+
+async function render() {
+  const { Sidc, Standard, StandardIdentity, SymbolSet } = await import(
+    "milsymbol-sidc"
+  );
+
+  const sidc = new Sidc({ standard: Standard.App6 })
+    .identity(StandardIdentity.Friend)
+    .symbolSet(SymbolSet.LandUnit)
+    .toString();
+
+  return new ms.Symbol(sidc, { size: 32 }).asSVG();
+}
 ```
+
+Node.js 20.19+ and 22.12+ can also `require("milsymbol-sidc")` directly via
+`require(esm)`; earlier Node 18/20 releases must use `import()`.
 
 ### Browser
 
@@ -336,6 +463,18 @@ const ms = require("milsymbol");
 ### Recipes
 
 ```ts
+import {
+  Amplifier,
+  Context,
+  HqTaskForceDummy,
+  Sidc,
+  Standard,
+  StandardIdentity,
+  Status,
+  SymbolSet,
+  Version,
+} from "milsymbol-sidc";
+
 // Hostile planned armored unit
 new Sidc()
   .identity(StandardIdentity.SuspectJoker)
@@ -364,6 +503,15 @@ new Sidc({ standard: Standard.App6, strict: true })
   .symbolSet(SymbolSet.SeaSubsurface)
   .toString(); // "14153500000000000000"
 
+// APP-6 unit with structural entity and modifier fields
+new Sidc({ standard: Standard.App6, strict: true })
+  .identity(StandardIdentity.Friend)
+  .symbolSet(SymbolSet.LandUnit)
+  .entity("123456")
+  .modifier1("01")
+  .modifier2("09")
+  .toString(); // "14031000001234560109"
+
 // APP-6 D configuration retains an explicitly selected compatible edition
 new Sidc({ standard: Standard.App6, strict: true })
   .version(Version.App6D)
@@ -381,14 +529,15 @@ npm run build
 ```
 
 Test coverage includes per-field offset encoding for every enum member,
-defaults, immutability, setter validation errors, all combination rules in
-both warn and strict modes, raw-code escape hatches, and error class
-hierarchy.
+defaults, immutability, setter validation errors, extended-field offsets,
+all combination rules in both warn and strict modes, raw-code escape hatches,
+and error class hierarchy.
 
 ## Roadmap
 
-- Positions 8–20: HQ/task force/dummy, echelon/mobility, entity catalog with
-  named icon codes, sector modifiers.
+- Symbol-set-specific named entity and modifier catalogs with semantic
+  validation.
+- Official positions 21–30 / Set C extension data.
 - Parsing/decoding SIDC strings back into structured fields.
 
 ## License

@@ -1,5 +1,7 @@
 import {
+  Amplifier,
   Context,
+  HqTaskForceDummy,
   Standard,
   StandardIdentity,
   Status,
@@ -7,7 +9,14 @@ import {
   Version,
 } from "./enums.js";
 import {
-  checkOneDigitField,
+  checkAmplifier,
+  checkContext,
+  checkFields,
+  checkHqTaskForceDummy,
+  checkIdentity,
+  checkSixDigitField,
+  checkStandard,
+  checkStatus,
   checkTwoDigitField,
   defaultVersionForStandard,
   findCombinationProblems,
@@ -36,19 +45,24 @@ export interface SidcOptions {
   standard?: Standard;
 }
 
-const SIDC_LENGTH = 20;
-
-const CONTEXTS: ReadonlySet<string> = new Set(Object.values(Context));
-const IDENTITIES: ReadonlySet<string> = new Set(Object.values(StandardIdentity));
-const STANDARDS: ReadonlySet<string> = new Set(Object.values(Standard));
-const STATUSES: ReadonlySet<string> = new Set(Object.values(Status));
+/** Drops explicitly-undefined entries so omitted and undefined values both default. */
+function dropUndefined(
+  fields: Partial<SidcFields> | null | undefined,
+): Partial<SidcFields> {
+  if (fields == null) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Partial<SidcFields>;
+}
 
 /**
  * Fluent builder for 20-character numeric SIDC strings
  * (MIL-STD-2525E / APP-6 coding structure).
  *
- * Covers positions 1-7; positions 8-20 are zero-filled so the result can be
- * passed straight to milsymbol's `new ms.Symbol(sidc)`.
+ * Covers all positions 1-20 of the numeric SIDC so the result can be passed
+ * straight to milsymbol's `new ms.Symbol(sidc)`.
  *
  * All setters are immutable: they return a new `Sidc` and leave the original
  * untouched.
@@ -69,27 +83,37 @@ export class Sidc {
   /**
    * @param options Builder behaviour flags.
    * @param fields Initial field values. Internal; used for immutable clones.
+   * Legacy records may omit the newly supported tail fields; omitted and
+   * explicitly-undefined values are normalized to their zero defaults. Every
+   * supplied value is validated, so this path cannot produce a malformed SIDC.
    */
-  constructor(options: SidcOptions = {}, fields?: SidcFields) {
-    if (
-      fields === undefined &&
-      options.standard !== undefined &&
-      !STANDARDS.has(options.standard)
-    ) {
-      throw new SidcValidationError(`Unknown standard "${options.standard}".`);
+  constructor(options: SidcOptions = {}, fields?: Partial<SidcFields> | null) {
+    if (options.standard !== undefined) {
+      checkStandard(options.standard);
     }
 
-    this.fields = fields ?? {
+    const provided = dropUndefined(fields);
+    const standard = provided.standard ?? options.standard;
+
+    this.fields = Object.freeze({
       version:
-        options.standard === undefined
+        standard === undefined
           ? Version.MilStd2525E
-          : defaultVersionForStandard(options.standard),
+          : defaultVersionForStandard(standard),
       context: Context.Reality,
       identity: StandardIdentity.Unknown,
       symbolSet: SymbolSet.Unknown,
       status: Status.Present,
-      standard: options.standard,
-    };
+      hqTaskForceDummy: HqTaskForceDummy.None,
+      amplifier: Amplifier.None,
+      entity: "000000",
+      modifier1: "00",
+      modifier2: "00",
+      standard,
+      ...provided,
+    });
+
+    checkFields(this.fields);
     this.strict = options.strict ?? false;
   }
 
@@ -100,15 +124,47 @@ export class Sidc {
    * it is reset to that family's latest edition (APP-6 E or MIL-STD-2525E).
    */
   standard(standard: Standard): Sidc {
-    if (!STANDARDS.has(standard)) {
-      throw new SidcValidationError(`Unknown standard "${standard}".`);
-    }
+    checkStandard(standard);
 
     const version =
       standardForVersion(this.fields.version) === standard
         ? this.fields.version
         : defaultVersionForStandard(standard);
     return this.with({ standard, version });
+  }
+
+  /**
+   * Position 8: headquarters, task force, and feint/dummy indicator.
+   */
+  hqTaskForceDummy(value: HqTaskForceDummy): Sidc {
+    checkHqTaskForceDummy(value);
+    return this.with({ hqTaskForceDummy: value });
+  }
+
+  /**
+   * Positions 9-10: echelon, mobility, leadership, or auxiliary amplifier.
+   */
+  amplifier(value: Amplifier): Sidc {
+    checkAmplifier(value);
+    return this.with({ amplifier: value });
+  }
+
+  /** Positions 11-16: six-digit entity code. */
+  entity(value: string): Sidc {
+    checkSixDigitField("Entity", value);
+    return this.with({ entity: value });
+  }
+
+  /** Positions 17-18: two-digit modifier 1 code. */
+  modifier1(value: string): Sidc {
+    checkTwoDigitField("Modifier 1", value);
+    return this.with({ modifier1: value });
+  }
+
+  /** Positions 19-20: two-digit modifier 2 code. */
+  modifier2(value: string): Sidc {
+    checkTwoDigitField("Modifier 2", value);
+    return this.with({ modifier2: value });
   }
 
   /** Positions 1-2: standard edition. Accepts known codes or a raw two-digit code. */
@@ -119,21 +175,13 @@ export class Sidc {
 
   /** Position 3: context. */
   context(context: Context): Sidc {
-    checkOneDigitField("Context", context);
-    if (!CONTEXTS.has(context)) {
-      throw new SidcValidationError(`Unknown context code "${context}".`);
-    }
+    checkContext(context);
     return this.with({ context });
   }
 
   /** Position 4: standard identity (affiliation). */
   identity(identity: StandardIdentity): Sidc {
-    checkOneDigitField("Standard identity", identity);
-    if (!IDENTITIES.has(identity)) {
-      throw new SidcValidationError(
-        `Unknown standard identity code "${identity}".`
-      );
-    }
+    checkIdentity(identity);
     return this.with({ identity });
   }
 
@@ -145,10 +193,7 @@ export class Sidc {
 
   /** Position 7: status / condition. */
   status(status: Status): Sidc {
-    checkOneDigitField("Status", status);
-    if (!STATUSES.has(status)) {
-      throw new SidcValidationError(`Unknown status code "${status}".`);
-    }
+    checkStatus(status);
     return this.with({ status });
   }
 
@@ -165,7 +210,7 @@ export class Sidc {
       unrecognizedCodeWarning(
         "symbol set",
         this.fields.symbolSet,
-        knownSymbolSets
+        knownSymbolSets,
       ),
       ...findCombinationProblems(this.fields),
     ];
@@ -185,8 +230,20 @@ export class Sidc {
       this.fields.context +
       this.fields.identity +
       this.fields.symbolSet +
-      this.fields.status;
-    return head.padEnd(SIDC_LENGTH, "0");
+      this.fields.status +
+      this.fields.hqTaskForceDummy +
+      this.fields.amplifier +
+      this.fields.entity +
+      this.fields.modifier1 +
+      this.fields.modifier2;
+
+    if (head.length !== 20) {
+      throw new SidcValidationError(
+        `Internal error: rendered SIDC has ${head.length} characters instead of 20.`,
+      );
+    }
+
+    return head;
   }
 
   private with(fields: Partial<SidcFields>): Sidc {

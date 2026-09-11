@@ -1,5 +1,5 @@
 /**
- * Configuration values and field codes for positions 1-7 of the 20-character
+ * Configuration values and field codes for positions 1-20 of the 20-character
  * numeric SIDC (MIL-STD-2525D/E and APP-6 D/E coding structure).
  *
  * SIDC field values are the literal digit codes that appear in the string.
@@ -17,6 +17,55 @@ export const Standard = {
   App6: "APP6",
 } as const;
 export type Standard = (typeof Standard)[keyof typeof Standard];
+
+/** Position 8: headquarters, task force, and feint/dummy indicator. */
+export const HqTaskForceDummy = {
+  None: "0",
+  FeintDummy: "1",
+  Headquarters: "2",
+  FeintDummyHeadquarters: "3",
+  TaskForce: "4",
+  FeintDummyTaskForce: "5",
+  TaskForceHeadquarters: "6",
+  FeintDummyTaskForceHeadquarters: "7",
+} as const;
+export type HqTaskForceDummy =
+  (typeof HqTaskForceDummy)[keyof typeof HqTaskForceDummy];
+
+/** Positions 9-10: echelon, mobility, leadership, or auxiliary amplifier. */
+export const Amplifier = {
+  None: "00",
+  TeamCrew: "11",
+  Squad: "12",
+  Section: "13",
+  PlatoonDetachment: "14",
+  CompanyBatteryTroop: "15",
+  BattalionSquadron: "16",
+  RegimentGroup: "17",
+  Brigade: "18",
+  Division: "21",
+  CorpsMef: "22",
+  Army: "23",
+  ArmyGroupFront: "24",
+  RegionTheater: "25",
+  Command: "26",
+  WheeledLimitedCrossCountry: "31",
+  WheeledCrossCountry: "32",
+  Tracked: "33",
+  WheeledTrackedCombination: "34",
+  Towed: "35",
+  Rail: "36",
+  PackAnimals: "37",
+  OverSnowPrimeMover: "41",
+  Sled: "42",
+  Barge: "51",
+  Amphibious: "52",
+  ShortTowedArray: "61",
+  LongTowedArray: "62",
+  LeaderIndividual: "71",
+  DeputyIndividual: "72",
+} as const;
+export type Amplifier = (typeof Amplifier)[keyof typeof Amplifier];
 
 /** Positions 1-2: Version / standard edition. */
 export const Version = {
@@ -51,7 +100,8 @@ export const StandardIdentity = {
   /** Dual-use: Hostile (reality) / Faker (exercise). */
   HostileFaker: "6",
 } as const;
-export type StandardIdentity = (typeof StandardIdentity)[keyof typeof StandardIdentity];
+export type StandardIdentity =
+  (typeof StandardIdentity)[keyof typeof StandardIdentity];
 
 /** Positions 5-6: Symbol set. Only sets supported by milsymbol are listed. */
 export const SymbolSet = {
