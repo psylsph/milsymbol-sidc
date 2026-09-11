@@ -1,4 +1,11 @@
-import { Context, StandardIdentity, Status, SymbolSet, Version } from "./enums.js";
+import {
+  Context,
+  Standard,
+  StandardIdentity,
+  Status,
+  SymbolSet,
+  Version,
+} from "./enums.js";
 
 /** Fields encoded by the builder, keyed by SIDC position. */
 export interface SidcFields {
@@ -7,6 +14,8 @@ export interface SidcFields {
   identity: string;
   symbolSet: string;
   status: string;
+  /** Optional standard-family configuration used for defaults and validation. */
+  standard?: Standard;
 }
 
 export class SidcError extends Error {
@@ -44,6 +53,53 @@ const KNOWN_SYMBOL_SETS: readonly string[] = [
   "39",
 ];
 
+const STANDARD_DEFAULT_VERSIONS: Readonly<Record<Standard, Version>> = {
+  [Standard.MilStd2525]: Version.MilStd2525E,
+  [Standard.App6]: Version.App6E,
+};
+
+const VERSION_STANDARDS: Readonly<Partial<Record<string, Standard>>> = {
+  [Version.MilStd2525D]: Standard.MilStd2525,
+  [Version.App6D]: Standard.App6,
+  [Version.MilStd2525E]: Standard.MilStd2525,
+  [Version.App6E]: Standard.App6,
+};
+
+const STANDARD_NAMES: Readonly<Record<Standard, string>> = {
+  [Standard.MilStd2525]: "MIL-STD-2525",
+  [Standard.App6]: "APP-6",
+};
+
+const EDITION_NAMES: Readonly<Partial<Record<string, string>>> = {
+  [Version.MilStd2525D]: "MIL-STD-2525D",
+  [Version.App6D]: "APP-6 D",
+  [Version.MilStd2525E]: "MIL-STD-2525E",
+  [Version.App6E]: "APP-6 E",
+};
+
+// Symbol sets omitted from milsymbol's handler bundle for each legacy edition.
+const UNSUPPORTED_SYMBOL_SETS: Readonly<
+  Partial<Record<string, readonly string[]>>
+> = {
+  [Version.MilStd2525D]: [SymbolSet.LandDismountedIndividual],
+  [Version.App6D]: [SymbolSet.Cyberspace],
+};
+
+const SYMBOL_SET_NAMES: Readonly<Partial<Record<string, string>>> = {
+  [SymbolSet.LandDismountedIndividual]: "dismounted individual",
+  [SymbolSet.Cyberspace]: "cyberspace",
+};
+
+/** Returns the latest supported version for a configured standard family. */
+export function defaultVersionForStandard(standard: Standard): Version {
+  return STANDARD_DEFAULT_VERSIONS[standard];
+}
+
+/** Returns the standard family for a known official version code. */
+export function standardForVersion(version: string): Standard | undefined {
+  return VERSION_STANDARDS[version];
+}
+
 function assertDigits(name: string, value: string, pattern: RegExp, length: number): void {
   if (!pattern.test(value)) {
     throw new SidcValidationError(
@@ -69,7 +125,18 @@ export function checkOneDigitField(name: string, value: string): void {
  */
 export function findCombinationProblems(fields: SidcFields): string[] {
   const problems: string[] = [];
-  const { version, context, identity, symbolSet, status } = fields;
+  const { version, context, identity, symbolSet, status, standard } = fields;
+
+  const versionStandard = standardForVersion(version);
+  if (
+    standard !== undefined &&
+    versionStandard !== undefined &&
+    versionStandard !== standard
+  ) {
+    problems.push(
+      `Version "${version}" (${EDITION_NAMES[version]}) belongs to ${STANDARD_NAMES[versionStandard]}, not the configured ${STANDARD_NAMES[standard]} standard.`
+    );
+  }
 
   // Condition statuses do not apply to control measures (tactical graphics).
   if (
@@ -95,11 +162,10 @@ export function findCombinationProblems(fields: SidcFields): string[] {
   }
 
   // Symbol sets missing from specific standards' handler lists.
-  if (version === Version.MilStd2525D && symbolSet === SymbolSet.LandDismountedIndividual) {
-    problems.push("Symbol set 27 (dismounted individual) is not supported by MIL-STD-2525D.");
-  }
-  if (version === Version.App6D && symbolSet === SymbolSet.Cyberspace) {
-    problems.push("Symbol set 60 (cyberspace) is not supported by APP-6 D.");
+  if (UNSUPPORTED_SYMBOL_SETS[version]?.includes(symbolSet)) {
+    problems.push(
+      `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not supported by ${EDITION_NAMES[version]}.`
+    );
   }
 
   return problems;

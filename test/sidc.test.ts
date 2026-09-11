@@ -6,6 +6,7 @@ import {
   Sidc,
   SidcCombinationError,
   SidcValidationError,
+  Standard,
   StandardIdentity,
   Status,
   SymbolSet,
@@ -41,6 +42,98 @@ describe("Sidc defaults", () => {
       .status(Status.Destroyed)
       .toString();
     assert.equal(sidc.length, 20);
+  });
+});
+
+describe("standard configuration", () => {
+  it("defaults APP-6 and MIL-STD-2525 to their latest editions", () => {
+    assert.equal(
+      new Sidc({ standard: Standard.App6 }).toString(),
+      "14010000000000000000"
+    );
+    assert.equal(
+      new Sidc({ standard: Standard.MilStd2525 }).toString(),
+      "13010000000000000000"
+    );
+  });
+
+  it("configures APP-6 through the immutable setter", () => {
+    const base = new Sidc();
+    const app6 = base.standard(Standard.App6);
+
+    assert.notEqual(base, app6);
+    assert.equal(base.toString().slice(0, 2), Version.MilStd2525E);
+    assert.equal(app6.toString().slice(0, 2), Version.App6E);
+  });
+
+  it("retains a version that already belongs to the selected family", () => {
+    const app6d = new Sidc()
+      .version(Version.App6D)
+      .standard(Standard.App6);
+    assert.equal(app6d.toString().slice(0, 2), Version.App6D);
+  });
+
+  it("resets an incompatible version to the selected family's default", () => {
+    const sidc = new Sidc()
+      .version(Version.App6D)
+      .standard(Standard.MilStd2525);
+    assert.equal(sidc.toString().slice(0, 2), Version.MilStd2525E);
+  });
+
+  it("flags a version from another configured standard family", () => {
+    const warnings = captureWarnings(() => {
+      new Sidc({ standard: Standard.App6 })
+        .version(Version.MilStd2525E)
+        .toString();
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /configured APP-6 standard/);
+
+    assert.throws(
+      () =>
+        new Sidc({ strict: true, standard: Standard.App6 })
+          .version(Version.MilStd2525E)
+          .toString(),
+      SidcCombinationError
+    );
+  });
+
+  it("keeps the recognized raw-version escape hatch backward compatible", () => {
+    const warnings = captureWarnings(() => {
+      const rendered = new Sidc({ standard: Standard.App6 })
+        .version("12")
+        .toString();
+      assert.equal(rendered.slice(0, 2), "12");
+    });
+    assert.deepEqual(warnings, []);
+  });
+
+  it("applies edition-specific APP-6 validation", () => {
+    const warnings = captureWarnings(() => {
+      new Sidc({ standard: Standard.App6 })
+        .version(Version.App6D)
+        .symbolSet(SymbolSet.Cyberspace)
+        .toString();
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /APP-6 D/);
+  });
+
+  it("rejects unknown standard configuration values", () => {
+    assert.throws(
+      () => new Sidc({ standard: "NATO" as never }),
+      SidcValidationError
+    );
+    assert.throws(
+      () => new Sidc().standard("NATO" as never),
+      SidcValidationError
+    );
+  });
+
+  it("accepts every Standard member through the setter", () => {
+    for (const standard of Object.values(Standard)) {
+      assert.doesNotThrow(() => new Sidc().standard(standard));
+    }
   });
 });
 
@@ -252,9 +345,10 @@ describe("combination validation", () => {
         .toString();
       new Sidc().version(Version.App6D).symbolSet(SymbolSet.Cyberspace).toString();
     });
-    assert.equal(warnings.length, 2);
-    assert.match(warnings[0]!, /2525D/);
-    assert.match(warnings[1]!, /APP-6 D/);
+    assert.deepEqual(warnings, [
+      "[milsymbol-sidc] Symbol set 27 (dismounted individual) is not supported by MIL-STD-2525D.",
+      "[milsymbol-sidc] Symbol set 60 (cyberspace) is not supported by APP-6 D.",
+    ]);
   });
 
   it("valid combinations produce no warnings", () => {

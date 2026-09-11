@@ -1,5 +1,6 @@
 export {
   Context,
+  Standard,
   StandardIdentity,
   Status,
   SymbolSet,

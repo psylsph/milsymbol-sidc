@@ -1,5 +1,6 @@
 import {
   Context,
+  Standard,
   StandardIdentity,
   Status,
   SymbolSet,
@@ -8,11 +9,13 @@ import {
 import {
   checkOneDigitField,
   checkTwoDigitField,
+  defaultVersionForStandard,
   findCombinationProblems,
   knownSymbolSets,
   knownVersions,
   SidcCombinationError,
   SidcValidationError,
+  standardForVersion,
   unrecognizedCodeWarning,
   type SidcFields,
 } from "./validate.js";
@@ -24,12 +27,20 @@ export interface SidcOptions {
    * Invalid individual values always throw immediately.
    */
   strict?: boolean;
+
+  /**
+   * Configure a standard family. This selects its latest edition by default
+   * (APP-6 E or MIL-STD-2525E) and enables standard/version consistency checks.
+   * Omit this option to preserve the original MIL-STD-2525E behavior.
+   */
+  standard?: Standard;
 }
 
 const SIDC_LENGTH = 20;
 
 const CONTEXTS: ReadonlySet<string> = new Set(Object.values(Context));
 const IDENTITIES: ReadonlySet<string> = new Set(Object.values(StandardIdentity));
+const STANDARDS: ReadonlySet<string> = new Set(Object.values(Standard));
 const STATUSES: ReadonlySet<string> = new Set(Object.values(Status));
 
 /**
@@ -60,14 +71,44 @@ export class Sidc {
    * @param fields Initial field values. Internal; used for immutable clones.
    */
   constructor(options: SidcOptions = {}, fields?: SidcFields) {
+    if (
+      fields === undefined &&
+      options.standard !== undefined &&
+      !STANDARDS.has(options.standard)
+    ) {
+      throw new SidcValidationError(`Unknown standard "${options.standard}".`);
+    }
+
     this.fields = fields ?? {
-      version: Version.MilStd2525E,
+      version:
+        options.standard === undefined
+          ? Version.MilStd2525E
+          : defaultVersionForStandard(options.standard),
       context: Context.Reality,
       identity: StandardIdentity.Unknown,
       symbolSet: SymbolSet.Unknown,
       status: Status.Present,
+      standard: options.standard,
     };
     this.strict = options.strict ?? false;
+  }
+
+  /**
+   * Configures the standard family and its validation rules.
+   *
+   * A version already belonging to the selected family is retained. Otherwise
+   * it is reset to that family's latest edition (APP-6 E or MIL-STD-2525E).
+   */
+  standard(standard: Standard): Sidc {
+    if (!STANDARDS.has(standard)) {
+      throw new SidcValidationError(`Unknown standard "${standard}".`);
+    }
+
+    const version =
+      standardForVersion(this.fields.version) === standard
+        ? this.fields.version
+        : defaultVersionForStandard(standard);
+    return this.with({ standard, version });
   }
 
   /** Positions 1-2: standard edition. Accepts known codes or a raw two-digit code. */

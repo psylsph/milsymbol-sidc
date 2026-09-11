@@ -1,9 +1,22 @@
 /**
- * Field codes for positions 1-7 of the 20-character numeric SIDC
- * (MIL-STD-2525D/E and APP-6 D/E coding structure).
+ * Configuration values and field codes for positions 1-7 of the 20-character
+ * numeric SIDC (MIL-STD-2525D/E and APP-6 D/E coding structure).
  *
- * Values are the literal digit codes that appear in the SIDC string.
+ * SIDC field values are the literal digit codes that appear in the string.
  */
+
+/**
+ * Symbol standard family.
+ *
+ * Values match milsymbol's `standard` option and `ms.setStandard()` API.
+ */
+export const Standard = {
+  /** US MIL-STD-2525 (the default standard family). */
+  MilStd2525: "2525",
+  /** NATO APP-6. */
+  App6: "APP6",
+} as const;
+export type Standard = (typeof Standard)[keyof typeof Standard];
 
 /** Positions 1-2: Version / standard edition. */
 export const Version = {

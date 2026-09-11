@@ -50,6 +50,7 @@ The package ships ESM with bundled TypeScript declarations (`dist/`).
 import {
   Sidc,
   Context,
+  Standard,
   StandardIdentity,
   SymbolSet,
   Status,
@@ -72,11 +73,11 @@ The builder is **immutable**: each setter returns a new instance, so a base
 configuration can be safely reused:
 
 ```ts
-const base = new Sidc().version(Version.App6E);
+const base = new Sidc({ standard: Standard.App6 });
 
 const friendly = base.identity(StandardIdentity.Friend).toString();
 const hostile = base.identity(StandardIdentity.SuspectJoker).toString();
-// base itself is unchanged
+// base itself is unchanged; both derived SIDCs use APP-6 E (version "14")
 ```
 
 ## Anatomy of the generated SIDC
@@ -105,11 +106,13 @@ const hostile = base.identity(StandardIdentity.SuspectJoker).toString();
 ### `new Sidc(options?)`
 
 Creates a builder preconfigured to 2525E / Reality / Unknown / Unknown set /
-Present.
+Present. This remains the default for backward compatibility; configure
+`Standard.App6` to default to APP-6 E instead.
 
 | Option | Type | Default | Description |
 | ------ | ---- | ------- | ----------- |
 | `strict` | `boolean` | `false` | Throw on invalid field combinations during `toString()` instead of warning. Invalid values always throw immediately regardless of this flag. |
+| `standard` | `Standard` | Not configured (2525E behavior) | Select a standard family. `App6` defaults the version to APP-6 E (`"14"`); `MilStd2525` defaults it to MIL-STD-2525E (`"13"`). Explicit configuration also checks that later version choices belong to the selected family. |
 
 ### Methods
 
@@ -117,6 +120,7 @@ All setters validate their argument and return a new immutable `Sidc`.
 
 | Method | Field | Accepts |
 | ------ | ----- | ------- |
+| `standard(s)` | Version default + validation rules | A `Standard` constant. It retains a compatible current version; otherwise it selects that family's latest edition. |
 | `version(v)` | Positions 1–2 | A `Version` constant or any two-digit string (escape hatch for future editions) |
 | `context(c)` | Position 3 | A `Context` constant |
 | `identity(i)` | Position 4 | A `StandardIdentity` constant |
@@ -125,6 +129,16 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `toString()` | — | Validates combinations and renders the 20-character SIDC |
 
 ### Enum reference
+
+#### `Standard`
+
+Values match milsymbol's `standard` option and `ms.setStandard()` API, so the
+same constant can configure both libraries.
+
+| Constant | Value | Standard family |
+| -------- | ----- | --------------- |
+| `MilStd2525` | `"2525"` | US MIL-STD-2525 (**default behavior when omitted**) |
+| `App6` | `"APP6"` | NATO APP-6 |
 
 #### `Version`
 
@@ -216,6 +230,8 @@ Active combination rules:
   identity is pending/unknown.
 - Symbol set 27 is unsupported in MIL-STD-2525D; symbol set 60 is unsupported
   in APP-6 D.
+- When a `Standard` is explicitly configured, official version codes from the
+  other standard family are reported.
 - Raw version/symbol-set codes outside milsymbol's known tables are reported.
 
 ```ts
@@ -268,12 +284,13 @@ parser, so codes from this package work without any configuration. The
 ### Node.js (ESM)
 
 ```js
-import ms from "milsymbol"; // bundles all standards incl. 2525E icons
-import { Sidc, StandardIdentity, SymbolSet } from "milsymbol-sidc";
+import ms from "milsymbol"; // bundles all numeric standards
+import { Sidc, Standard, StandardIdentity, SymbolSet } from "milsymbol-sidc";
 
-ms.setStandard("2525"); // or "APP6"
+const standard = Standard.App6;
+ms.setStandard(standard); // "APP6": use NATO styling
 
-const sidc = new Sidc()
+const sidc = new Sidc({ standard }) // defaults to APP-6 E (version "14")
   .identity(StandardIdentity.Friend)
   .symbolSet(SymbolSet.LandUnit)
   .toString();
@@ -297,14 +314,16 @@ const ms = require("milsymbol");
 ```html
 <script src="https://unpkg.com/milsymbol@3/dist/milsymbol.js"></script>
 <script type="module">
-  import { Sidc, StandardIdentity, SymbolSet } from "https://unpkg.com/milsymbol-sidc/dist/src/index.js";
+  import { Sidc, Standard, StandardIdentity, SymbolSet } from "https://unpkg.com/milsymbol-sidc/dist/src/index.js";
 
-  const sidc = new Sidc()
+  const sidc = new Sidc({ standard: Standard.App6 })
     .identity(StandardIdentity.Neutral)
     .symbolSet(SymbolSet.SeaSurface)
     .toString();
 
-  document.body.innerHTML = new ms.Symbol(sidc).asSVG();
+  document.body.innerHTML = new ms.Symbol(sidc, {
+    standard: Standard.App6,
+  }).asSVG();
 </script>
 ```
 
@@ -333,12 +352,18 @@ new Sidc()
   .toString(); // "13033640000000000000"
 
 // Exercise joker submarine under APP-6E
-new Sidc({ strict: true })
-  .version("14")
+new Sidc({ standard: Standard.App6, strict: true })
   .context(Context.Exercise)
   .identity(StandardIdentity.SuspectJoker)
   .symbolSet(SymbolSet.SeaSubsurface)
   .toString(); // "14153500000000000000"
+
+// APP-6 D configuration retains an explicitly selected compatible edition
+new Sidc({ standard: Standard.App6, strict: true })
+  .version(Version.App6D)
+  .identity(StandardIdentity.Friend)
+  .symbolSet(SymbolSet.LandDismountedIndividual)
+  .toString(); // "11032700000000000000"
 ```
 
 ## Development
