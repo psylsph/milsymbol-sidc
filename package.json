@@ -10,6 +10,10 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
+    "./catalogs": {
+      "types": "./dist/src/catalog.d.ts",
+      "default": "./dist/src/catalog.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -17,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "generate:catalogs": "node scripts/generate-catalogs.mjs && prettier --write src/catalogs.generated.ts",
     "test": "npm run build && node --test dist/test/*.test.js",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" package.json tsconfig.json \".github/**/*.yml\"",
@@ -63,6 +68,7 @@
     "@types/node": "^22.10.2",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
+    "milsymbol": "3.0.4",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.70.0"

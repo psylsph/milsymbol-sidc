@@ -224,13 +224,35 @@ export function checkFields(fields: SidcFields): void {
   checkTwoDigitField("Modifier 2", fields.modifier2);
 }
 
+/** A non-fatal problem detected while rendering a SIDC. */
+export interface SidcProblem {
+  /** Stable machine-readable identifier for the problem category. */
+  readonly code: string;
+  /**
+   * Human-readable description. Identical to the text emitted as a
+   * `console.warn` by `Sidc.toString()`.
+   */
+  readonly message: string;
+}
+
+function unrecognizedCodeProblem(
+  code: string,
+  name: string,
+  value: string,
+  known: readonly string[],
+): SidcProblem | undefined {
+  if (known.includes(value)) {
+    return undefined;
+  }
+  return { code, message: `Unrecognized ${name} code "${value}".` };
+}
+
 /**
  * Cross-field consistency checks mirroring milsymbol's number-based SIDC
- * parsing. Returns human-readable problem descriptions; an empty array means
- * the combination is valid.
+ * parsing.
  */
-export function findCombinationProblems(fields: SidcFields): string[] {
-  const problems: string[] = [];
+function combinationProblems(fields: SidcFields): SidcProblem[] {
+  const problems: SidcProblem[] = [];
   const { version, context, identity, symbolSet, status, standard } = fields;
 
   const versionStandard = standardForVersion(version);
@@ -239,22 +261,25 @@ export function findCombinationProblems(fields: SidcFields): string[] {
     versionStandard !== undefined &&
     versionStandard !== standard
   ) {
-    problems.push(
-      `Version "${version}" (${EDITION_NAMES[version]}) belongs to ` +
+    problems.push({
+      code: "version-standard-mismatch",
+      message:
+        `Version "${version}" (${EDITION_NAMES[version]}) belongs to ` +
         `${STANDARD_NAMES[versionStandard]}, not the configured ` +
         `${STANDARD_NAMES[standard]} standard.`,
-    );
+    });
   }
 
   // Condition statuses do not apply to control measures (tactical graphics).
   if (
-    (Object.values(Status) as readonly string[]).includes(status) &&
+    KNOWN_STATUSES.includes(status) &&
     parseInt(status, 10) >= 2 &&
     symbolSet === SymbolSet.ControlMeasure
   ) {
-    problems.push(
-      `Condition status "${status}" does not apply to the control measure symbol set.`,
-    );
+    problems.push({
+      code: "condition-status-control-measure",
+      message: `Condition status "${status}" does not apply to the control measure symbol set.`,
+    });
   }
 
   // milsymbol drops the affiliation for exercise symbols on unknown sets.
@@ -264,36 +289,59 @@ export function findCombinationProblems(fields: SidcFields): string[] {
     identity !== StandardIdentity.Pending &&
     identity !== StandardIdentity.Unknown
   ) {
-    problems.push(
-      "Exercise symbols on the unknown symbol set render without affiliation " +
+    problems.push({
+      code: "exercise-unknown-symbol-set",
+      message:
+        "Exercise symbols on the unknown symbol set render without affiliation " +
         "unless identity is pending/unknown.",
-    );
+    });
   }
 
   // Symbol sets missing from specific standards' handler lists.
   if (UNSUPPORTED_SYMBOL_SETS[version]?.includes(symbolSet)) {
-    problems.push(
-      `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not ` +
+    problems.push({
+      code: "unsupported-symbol-set",
+      message:
+        `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not ` +
         `supported by ${EDITION_NAMES[version]}.`,
-    );
+    });
   }
 
   return problems;
 }
 
 /**
- * Checks that a raw version/symbol-set code is at least recognized by
- * milsymbol's parser; returns a warning message when it is not.
+ * Collects every non-fatal problem for a field record, in render order:
+ * unrecognized raw codes first, then cross-field consistency checks.
+ *
+ * An empty array means the record is valid. Messages are the canonical warning
+ * text used by `Sidc.toString()`.
  */
-export function unrecognizedCodeWarning(
-  name: string,
-  value: string,
-  known: readonly string[],
-): string | undefined {
-  if (!known.includes(value)) {
-    return `Unrecognized ${name} code "${value}".`;
+export function collectProblems(fields: SidcFields): SidcProblem[] {
+  const problems: SidcProblem[] = [];
+
+  const versionProblem = unrecognizedCodeProblem(
+    "unrecognized-version",
+    "version",
+    fields.version,
+    KNOWN_VERSIONS,
+  );
+  if (versionProblem !== undefined) {
+    problems.push(versionProblem);
   }
-  return undefined;
+
+  const symbolSetProblem = unrecognizedCodeProblem(
+    "unrecognized-symbol-set",
+    "symbol set",
+    fields.symbolSet,
+    KNOWN_SYMBOL_SETS,
+  );
+  if (symbolSetProblem !== undefined) {
+    problems.push(symbolSetProblem);
+  }
+
+  problems.push(...combinationProblems(fields));
+  return problems;
 }
 
 export const knownVersions: readonly string[] = Object.freeze(KNOWN_VERSIONS);

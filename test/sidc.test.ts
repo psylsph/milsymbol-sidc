@@ -779,3 +779,231 @@ describe("error types", () => {
     }
   });
 });
+
+describe("problem reporting", () => {
+  it("exposes structured problems without side effects", () => {
+    const problems = new Sidc()
+      .symbolSet(SymbolSet.ControlMeasure)
+      .status(Status.Destroyed)
+      .problems();
+    assert.deepEqual(problems, [
+      {
+        code: "condition-status-control-measure",
+        message:
+          'Condition status "4" does not apply to the control measure symbol set.',
+      },
+    ]);
+  });
+
+  it("reports an empty problem list for valid SIDCs", () => {
+    const sidc = new Sidc()
+      .identity(StandardIdentity.Friend)
+      .symbolSet(SymbolSet.LandUnit);
+    assert.deepEqual(sidc.problems(), []);
+    assert.equal(sidc.isValid(), true);
+    assert.equal(new Sidc().symbolSet("99").isValid(), false);
+  });
+
+  it("tags every problem category with a stable code", () => {
+    const codes = (sidc: Sidc) =>
+      sidc.problems().map((problem) => problem.code);
+    assert.deepEqual(codes(new Sidc().version("99")), ["unrecognized-version"]);
+    assert.deepEqual(codes(new Sidc().symbolSet("99")), [
+      "unrecognized-symbol-set",
+    ]);
+    assert.deepEqual(
+      codes(new Sidc({ standard: Standard.App6 }).version(Version.MilStd2525E)),
+      ["version-standard-mismatch"],
+    );
+    assert.deepEqual(
+      codes(
+        new Sidc().context(Context.Exercise).identity(StandardIdentity.Friend),
+      ),
+      ["exercise-unknown-symbol-set"],
+    );
+    assert.deepEqual(
+      codes(new Sidc().version(Version.App6D).symbolSet(SymbolSet.Cyberspace)),
+      ["unsupported-symbol-set"],
+    );
+  });
+
+  it("routes problems to onWarning instead of console.warn", () => {
+    const seen: string[] = [];
+    const consoleWarnings = captureWarnings(() => {
+      const rendered = new Sidc({
+        onWarning: (problem) => seen.push(problem.code),
+      })
+        .version("99")
+        .toString();
+      assert.equal(rendered, "99010000000000000000");
+    });
+    assert.deepEqual(consoleWarnings, []);
+    assert.deepEqual(seen, ["unrecognized-version"]);
+  });
+
+  it("still throws in strict mode and reports nothing", () => {
+    const seen: string[] = [];
+    assert.throws(
+      () =>
+        new Sidc({
+          strict: true,
+          onWarning: (problem) => seen.push(problem.code),
+        })
+          .symbolSet(SymbolSet.ControlMeasure)
+          .status(Status.Destroyed)
+          .toString(),
+      SidcCombinationError,
+    );
+    assert.deepEqual(seen, []);
+  });
+});
+
+describe("snapshot and builder helpers", () => {
+  it("returns a plain snapshot of every field", () => {
+    const snapshot = new Sidc()
+      .identity(StandardIdentity.Friend)
+      .symbolSet(SymbolSet.LandUnit)
+      .hqTaskForceDummy(HqTaskForceDummy.Headquarters)
+      .amplifier(Amplifier.BattalionSquadron)
+      .entity("123456")
+      .modifier1("01")
+      .modifier2("09")
+      .toObject();
+    assert.deepEqual(snapshot, {
+      version: Version.MilStd2525E,
+      context: Context.Reality,
+      identity: StandardIdentity.Friend,
+      symbolSet: SymbolSet.LandUnit,
+      status: Status.Present,
+      hqTaskForceDummy: HqTaskForceDummy.Headquarters,
+      amplifier: Amplifier.BattalionSquadron,
+      entity: "123456",
+      modifier1: "01",
+      modifier2: "09",
+    });
+  });
+
+  it("includes the configured standard and supports JSON.stringify", () => {
+    const sidc = new Sidc({ standard: Standard.App6 }).identity(
+      StandardIdentity.Friend,
+    );
+    assert.equal(sidc.toObject().standard, Standard.App6);
+    assert.deepEqual(JSON.parse(JSON.stringify(sidc)), sidc.toObject());
+  });
+
+  it("returns a mutable copy that cannot corrupt the builder", () => {
+    const snapshot = new Sidc().toObject();
+    snapshot.entity = "999999";
+    assert.equal(new Sidc().toObject().entity, "000000");
+  });
+
+  it("applies partial updates through with()", () => {
+    const base = new Sidc().identity(StandardIdentity.Friend).entity("123456");
+    const updated = base.with({ entity: "654321", modifier1: "07" });
+    assert.equal(base.toObject().entity, "123456");
+    assert.equal(base.toObject().modifier1, "00");
+    assert.equal(updated.toObject().entity, "654321");
+    assert.equal(updated.toObject().modifier1, "07");
+  });
+
+  it("rejects malformed values passed to with()", () => {
+    assert.throws(
+      () => new Sidc().with({ entity: "ABC" }),
+      SidcValidationError,
+    );
+  });
+
+  it("clones and compares builders", () => {
+    const base = new Sidc().identity(StandardIdentity.Friend).entity("123456");
+    const copy = base.clone();
+    assert.notEqual(base, copy);
+    assert.equal(base.equals(copy), true);
+    assert.equal(base.equals(base.with({ entity: "654321" })), false);
+  });
+
+  it("compares encoded fields regardless of strict or standard", () => {
+    const plain = new Sidc().identity(StandardIdentity.Friend);
+    const configured = new Sidc({ strict: true, standard: Standard.App6 })
+      .identity(StandardIdentity.Friend)
+      .version(Version.MilStd2525E);
+    assert.equal(plain.equals(configured), true);
+  });
+});
+
+describe("parsing", () => {
+  it("round-trips every rendered SIDC", () => {
+    captureWarnings(() => {
+      const fixtures = [
+        new Sidc(),
+        new Sidc()
+          .identity(StandardIdentity.Friend)
+          .symbolSet(SymbolSet.LandUnit),
+        new Sidc()
+          .identity(StandardIdentity.Friend)
+          .symbolSet(SymbolSet.LandUnit)
+          .hqTaskForceDummy(HqTaskForceDummy.Headquarters)
+          .amplifier(Amplifier.BattalionSquadron)
+          .entity("123456")
+          .modifier1("01")
+          .modifier2("09"),
+        new Sidc({ standard: Standard.App6 })
+          .context(Context.Exercise)
+          .identity(StandardIdentity.SuspectJoker)
+          .symbolSet(SymbolSet.SeaSubsurface),
+        new Sidc().version("99").symbolSet("39"),
+      ];
+      for (const sidc of fixtures) {
+        const rendered = sidc.toString();
+        const parsed = Sidc.parse(rendered, { onWarning: () => {} });
+        assert.equal(parsed.toString(), rendered);
+        assert.equal(parsed.equals(sidc), true);
+      }
+    });
+  });
+
+  it("maps each position into the matching field", () => {
+    assert.deepEqual(Sidc.parse("14031002161234560109").toObject(), {
+      version: "14",
+      context: "0",
+      identity: "3",
+      symbolSet: "10",
+      status: "0",
+      hqTaskForceDummy: "2",
+      amplifier: "16",
+      entity: "123456",
+      modifier1: "01",
+      modifier2: "09",
+    });
+  });
+
+  it("rejects malformed input", () => {
+    for (const value of [
+      "",
+      "1303100000000000000",
+      "130310000000000000000",
+      "1303100000000000000A",
+      "13031000000000000000\n",
+      " 13031000000000000000",
+    ]) {
+      assert.equal(Sidc.tryParse(value), undefined);
+      assert.throws(() => Sidc.parse(value), SidcValidationError);
+    }
+    assert.equal(Sidc.tryParse(Symbol("x") as never), undefined);
+  });
+
+  it("rejects unknown enum codes", () => {
+    assert.equal(Sidc.tryParse("13901000000000000000"), undefined);
+    assert.throws(
+      () => Sidc.parse("13901000000000000000"),
+      SidcValidationError,
+    );
+  });
+
+  it("carries options into the parsed builder", () => {
+    const seen: string[] = [];
+    Sidc.parse("99010000000000000000", {
+      onWarning: (problem) => seen.push(problem.code),
+    }).toString();
+    assert.deepEqual(seen, ["unrecognized-version"]);
+  });
+});

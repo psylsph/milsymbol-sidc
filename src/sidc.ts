@@ -18,15 +18,13 @@ import {
   checkStandard,
   checkStatus,
   checkTwoDigitField,
+  collectProblems,
   defaultVersionForStandard,
-  findCombinationProblems,
-  knownSymbolSets,
-  knownVersions,
   SidcCombinationError,
   SidcValidationError,
   standardForVersion,
-  unrecognizedCodeWarning,
   type SidcFields,
+  type SidcProblem,
 } from "./validate.js";
 
 export interface SidcOptions {
@@ -43,7 +41,38 @@ export interface SidcOptions {
    * Omit this option to preserve the original MIL-STD-2525E behavior.
    */
   standard?: Standard;
+
+  /**
+   * Receive non-fatal problems instead of the default `console.warn`.
+   *
+   * When provided, {@link Sidc.toString} calls this once per problem and never
+   * writes to the console. `strict: true` still throws instead of reporting.
+   */
+  onWarning?: (problem: SidcProblem) => void;
 }
+
+/**
+ * Plain, serializable snapshot of every encoded field.
+ *
+ * Returned by {@link Sidc.toObject} and {@link Sidc.toJSON}.
+ */
+export interface SidcSnapshot {
+  version: string;
+  context: string;
+  identity: string;
+  symbolSet: string;
+  status: string;
+  hqTaskForceDummy: string;
+  amplifier: string;
+  entity: string;
+  modifier1: string;
+  modifier2: string;
+  /** Present when a standard family is configured on the builder. */
+  standard?: Standard;
+}
+
+/** Exact shape of a supported numeric SIDC: 20 ASCII digits. */
+const SIDC_PATTERN = /^\d{20}$/;
 
 /** Drops explicitly-undefined entries so omitted and undefined values both default. */
 function dropUndefined(
@@ -79,6 +108,7 @@ function dropUndefined(
 export class Sidc {
   private readonly fields: SidcFields;
   private readonly strict: boolean;
+  private readonly onWarning?: (problem: SidcProblem) => void;
 
   /**
    * @param options Builder behaviour flags.
@@ -115,6 +145,7 @@ export class Sidc {
 
     checkFields(this.fields);
     this.strict = options.strict ?? false;
+    this.onWarning = options.onWarning;
   }
 
   /**
@@ -201,27 +232,25 @@ export class Sidc {
    * Validates combinations and renders the 20-character SIDC string.
    *
    * - Invalid values already throw in the setters.
-   * - Unrecognized raw codes and invalid combinations emit console warnings,
-   *   or throw when built with `{ strict: true }`.
+   * - Unrecognized raw codes and invalid combinations are reported through
+   *   `onWarning`, as `console.warn`, or thrown when built with
+   *   `{ strict: true }`.
    */
   toString(): string {
-    const warnings: (string | undefined)[] = [
-      unrecognizedCodeWarning("version", this.fields.version, knownVersions),
-      unrecognizedCodeWarning(
-        "symbol set",
-        this.fields.symbolSet,
-        knownSymbolSets,
-      ),
-      ...findCombinationProblems(this.fields),
-    ];
-    const problems = warnings.filter((w): w is string => w !== undefined);
+    const problems = this.problems();
 
     if (problems.length > 0) {
       if (this.strict) {
-        throw new SidcCombinationError(problems.join(" "));
+        throw new SidcCombinationError(
+          problems.map((problem) => problem.message).join(" "),
+        );
       }
       for (const problem of problems) {
-        console.warn(`[milsymbol-sidc] ${problem}`);
+        if (this.onWarning !== undefined) {
+          this.onWarning(problem);
+        } else {
+          console.warn(`[milsymbol-sidc] ${problem.message}`);
+        }
       }
     }
 
@@ -246,7 +275,124 @@ export class Sidc {
     return head;
   }
 
-  private with(fields: Partial<SidcFields>): Sidc {
-    return new Sidc({ strict: this.strict }, { ...this.fields, ...fields });
+  /**
+   * Every non-fatal problem for the current field values, without rendering or
+   * producing any side effects. An empty array means the SIDC is valid.
+   */
+  problems(): SidcProblem[] {
+    return collectProblems(this.fields);
+  }
+
+  /** `true` when the current field values produce no problems. */
+  isValid(): boolean {
+    return this.problems().length === 0;
+  }
+
+  /**
+   * Copies the current field values into a new builder. The copy shares the
+   * `strict` flag and `onWarning` callback but is independent thereafter.
+   */
+  clone(): Sidc {
+    return this.with({});
+  }
+
+  /**
+   * Compares the encoded field values of two builders, ignoring `strict` and
+   * the configured standard family. Two builders are equal when they render the
+   * same 20-character SIDC.
+   */
+  equals(other: Sidc): boolean {
+    return (
+      this.fields.version === other.fields.version &&
+      this.fields.context === other.fields.context &&
+      this.fields.identity === other.fields.identity &&
+      this.fields.symbolSet === other.fields.symbolSet &&
+      this.fields.status === other.fields.status &&
+      this.fields.hqTaskForceDummy === other.fields.hqTaskForceDummy &&
+      this.fields.amplifier === other.fields.amplifier &&
+      this.fields.entity === other.fields.entity &&
+      this.fields.modifier1 === other.fields.modifier1 &&
+      this.fields.modifier2 === other.fields.modifier2
+    );
+  }
+
+  /** A fresh, plain-object snapshot of the encoded fields. */
+  toObject(): SidcSnapshot {
+    const snapshot: SidcSnapshot = {
+      version: this.fields.version,
+      context: this.fields.context,
+      identity: this.fields.identity,
+      symbolSet: this.fields.symbolSet,
+      status: this.fields.status,
+      hqTaskForceDummy: this.fields.hqTaskForceDummy,
+      amplifier: this.fields.amplifier,
+      entity: this.fields.entity,
+      modifier1: this.fields.modifier1,
+      modifier2: this.fields.modifier2,
+    };
+    if (this.fields.standard !== undefined) {
+      snapshot.standard = this.fields.standard;
+    }
+    return snapshot;
+  }
+
+  /** Enables `JSON.stringify(builder)`. Alias of {@link Sidc.toObject}. */
+  toJSON(): SidcSnapshot {
+    return this.toObject();
+  }
+
+  /**
+   * Applies a partial field record immutably.
+   *
+   * Every supplied value is validated exactly like the matching setter, so
+   * `with()` cannot produce a malformed SIDC.
+   */
+  with(fields: Partial<SidcFields>): Sidc {
+    return new Sidc(
+      { strict: this.strict, onWarning: this.onWarning },
+      { ...this.fields, ...fields },
+    );
+  }
+
+  /**
+   * Parses a 20-character numeric SIDC into a builder.
+   *
+   * @throws {SidcValidationError} when the input is not exactly 20 ASCII digits
+   * or contains an unknown enum code.
+   */
+  static parse(sidc: string, options: SidcOptions = {}): Sidc {
+    const parsed = Sidc.tryParse(sidc, options);
+    if (parsed === undefined) {
+      throw new SidcValidationError(
+        `Invalid 20-character numeric SIDC ${JSON.stringify(sidc)}.`,
+      );
+    }
+    return parsed;
+  }
+
+  /**
+   * Parses a 20-character numeric SIDC, returning `undefined` for any input
+   * that is not a valid numeric SIDC instead of throwing.
+   */
+  static tryParse(sidc: string, options: SidcOptions = {}): Sidc | undefined {
+    if (typeof sidc !== "string" || !SIDC_PATTERN.test(sidc)) {
+      return undefined;
+    }
+    try {
+      return new Sidc(options, {
+        version: sidc.slice(0, 2),
+        context: sidc.slice(2, 3),
+        identity: sidc.slice(3, 4),
+        symbolSet: sidc.slice(4, 6),
+        status: sidc.slice(6, 7),
+        hqTaskForceDummy: sidc.slice(7, 8),
+        amplifier: sidc.slice(8, 10),
+        entity: sidc.slice(10, 16),
+        modifier1: sidc.slice(16, 18),
+        modifier2: sidc.slice(18, 20),
+      });
+    } catch {
+      return undefined;
+    }
   }
 }

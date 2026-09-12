@@ -1,5 +1,6 @@
 # milsymbol-sidc
 
+[![CI](https://github.com/psylsph/milsymbol-sidc/actions/workflows/ci.yml/badge.svg)](https://github.com/psylsph/milsymbol-sidc/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/milsymbol-sidc.svg)](https://www.npmjs.com/package/milsymbol-sidc)
 [![npm downloads](https://img.shields.io/npm/dm/milsymbol-sidc.svg)](https://www.npmjs.com/package/milsymbol-sidc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -35,8 +36,8 @@ new ms.Symbol(sidc).asSVG(); // friendly land unit icon
 
 > **Coverage:** complete structural encoding for positions 1–20 of the numeric
 > SIDC. Positions 8–10 have named universal codes; positions 11–20 accept
-> validated raw entity and modifier codes. Symbol-set-specific entity and
-> modifier catalogs remain future work.
+> validated raw entity and modifier codes. A membership-only code catalog ships
+> behind the `milsymbol-sidc/catalogs` subpath; semantic names remain future work.
 
 ## Installation
 
@@ -142,6 +143,7 @@ Present. This remains the default for backward compatibility; configure
 | ------ | ---- | ------- | ----------- |
 | `strict` | `boolean` | `false` | Throw on invalid field combinations during `toString()` instead of warning. Invalid values always throw immediately regardless of this flag. |
 | `standard` | `Standard` | Not configured (2525E behavior) | Select a standard family. `App6` defaults the version to APP-6 E (`"14"`); `MilStd2525` defaults it to MIL-STD-2525E (`"13"`). Explicit configuration also checks that later version choices belong to the selected family. |
+| `onWarning` | `(problem: SidcProblem) => void` | `console.warn` | Receive non-fatal problems instead of writing to the console. `strict: true` still throws instead of reporting. |
 
 ### Methods
 
@@ -161,6 +163,14 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `modifier1(v)` | Positions 17–18 | Any two-digit string; symbol-set-specific catalogs are not included |
 | `modifier2(v)` | Positions 19–20 | Any two-digit string; symbol-set-specific catalogs are not included |
 | `toString()` | — | Validates combinations and renders the 20-character SIDC |
+| `problems()` | — | Structured list of non-fatal problems; never throws |
+| `isValid()` | — | `true` when `problems()` is empty |
+| `with(fields)` | — | Applies a partial field record immutably; validates like the setters |
+| `clone()` | — | Copies the fields into an independent builder |
+| `equals(other)` | — | Compares encoded fields, ignoring `strict` and `standard` |
+| `toObject()` / `toJSON()` | — | Plain, serializable snapshot of every encoded field |
+| `Sidc.parse(s, options?)` | — | Parses a 20-character numeric SIDC; throws when invalid |
+| `Sidc.tryParse(s, options?)` | — | Parses a SIDC or returns `undefined` |
 
 ### Enum reference
 
@@ -390,6 +400,72 @@ try {
 Error classes: `SidcError` (base) → `SidcValidationError`,
 `SidcCombinationError`.
 
+### Reading and reporting problems
+
+`console.warn` is only the default. Inspect problems without side effects with
+`problems()` and `isValid()`, or route them anywhere with `onWarning`:
+
+```ts
+import { Sidc, SymbolSet, Status } from "milsymbol-sidc";
+
+const sidc = new Sidc()
+  .symbolSet(SymbolSet.ControlMeasure)
+  .status(Status.Destroyed);
+
+sidc.problems();
+// [{ code: "condition-status-control-measure", message: "…" }]
+sidc.isValid(); // false
+
+new Sidc({ onWarning: (problem) => log.warn(problem.code) })
+  .symbolSet(SymbolSet.ControlMeasure)
+  .status(Status.Destroyed)
+  .toString(); // no console output; onWarning is called once
+```
+
+Every problem carries a stable `code` and the exact legacy warning `message`.
+`problems()` never throws, even for builders created with `{ strict: true }`;
+`toString()` still throws `SidcCombinationError` in strict mode.
+
+## Parsing a SIDC
+
+`Sidc.parse()` turns a 20-character numeric SIDC back into a builder so you can
+validate, edit, and re-render existing codes. `Sidc.tryParse()` returns
+`undefined` instead of throwing.
+
+```ts
+import { Sidc } from "milsymbol-sidc";
+
+const sidc = Sidc.parse("14031002161234560109");
+sidc.toObject().entity; // "123456"
+
+sidc.with({ modifier1: "02" }).toString(); // "14031002161234560209"
+Sidc.tryParse("not-a-sidc"); // undefined
+```
+
+Round-tripping is guaranteed: `Sidc.parse(s).toString() === s` for any string
+this library produces. Only the 20-character numeric form is supported today;
+letter-based SIDCs and the 21–30 character extension are not.
+
+## Catalogs (optional)
+
+The `milsymbol-sidc/catalogs` subpath exposes a membership catalog generated from
+milsymbol's numeric symbol data: which entity and modifier codes milsymbol
+registers for each symbol set. It is a separate entry point, so the core builder
+stays data-free unless you import it.
+
+```ts
+import { entityCodes, isKnownEntityCode } from "milsymbol-sidc/catalogs";
+
+isKnownEntityCode("10", "121100"); // true — a registered land-unit entity
+isKnownEntityCode("10", "999999"); // false
+entityCodes("10").length; // number of registered land-unit codes
+```
+
+The catalog is **membership only**: it carries no semantic names and is never
+consulted by `toString()`, so raw entity and modifier values still encode
+without recognition warnings. Regenerate it with `npm run generate:catalogs`;
+the milsymbol version it was derived from is exported as `CATALOG_SOURCE`.
+
 ## Using with milsymbol
 
 milsymbol routes any SIDC whose first two characters are digits to its numeric
@@ -524,9 +600,15 @@ new Sidc({ standard: Standard.App6, strict: true })
 
 ```bash
 npm install
-npm test     # compiles with tsc, then runs node --test against dist/
+npm test                  # compiles with tsc, then runs node --test against dist/
 npm run build
+npm run lint              # eslint
+npm run format:check      # prettier
+npm run generate:catalogs # regenerate src/catalogs.generated.ts from milsymbol
 ```
+
+CI runs the test suite on Node 18/20/22/24, plus lint, formatting, markdownlint,
+coverage, and a check that the generated catalog is current.
 
 Test coverage includes per-field offset encoding for every enum member,
 defaults, immutability, setter validation errors, extended-field offsets,
@@ -535,10 +617,8 @@ and error class hierarchy.
 
 ## Roadmap
 
-- Symbol-set-specific named entity and modifier catalogs with semantic
-  validation.
+- Semantic entity and modifier names, layered on the membership catalog.
 - Official positions 21–30 / Set C extension data.
-- Parsing/decoding SIDC strings back into structured fields.
 
 ## License
 
