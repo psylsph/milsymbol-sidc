@@ -129,6 +129,22 @@ export const SymbolSet = {
 } as const;
 export type SymbolSet = (typeof SymbolSet)[keyof typeof SymbolSet];
 
+/** Position 23: milsymbol frame-shape selector (E editions). */
+export const FrameShape = {
+  Default: "0",
+  Space: "1",
+  Air: "2",
+  LandUnit: "3",
+  LandEquipmentSeaSurface: "4",
+  Installation: "5",
+  LandDismountedIndividual: "6",
+  SeaSubsurface: "7",
+  ActivityEvent: "8",
+  Cyberspace: "9",
+  NoFrame: "A",
+} as const;
+export type FrameShape = (typeof FrameShape)[keyof typeof FrameShape];
+
 /** Position 7: Status / condition. */
 export const Status = {
   Present: "0",

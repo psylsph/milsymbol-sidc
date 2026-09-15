@@ -27,6 +27,10 @@ const entityCodes = new Map();
 const modifier1Codes = new Map();
 /** @type {Map<string, Set<string>>} */
 const modifier2Codes = new Map();
+const extendedModifier1Codes = new Map();
+const extendedModifier2Codes = new Map();
+const commonExtendedModifier1 = new Set();
+const commonExtendedModifier2 = new Set();
 const commonModifier1 = new Set();
 const commonModifier2 = new Set();
 
@@ -47,11 +51,15 @@ for (const file of readdirSync(sourceDir).filter((f) => f.endsWith(".js"))) {
   const entities = uniqueMatches(text, /sId\["(\d{6})"\]/g);
   const modifiers1 = uniqueMatches(text, /sIdm1\["(\d{2})"\]/g);
   const modifiers2 = uniqueMatches(text, /sIdm2\["(\d{2})"\]/g);
+  const extendedModifiers1 = uniqueMatches(text, /sIdm1\["(\d{3})"\]/g);
+  const extendedModifiers2 = uniqueMatches(text, /sIdm2\["(\d{3})"\]/g);
 
   if (symbolSets.length === 0) {
     // Modules without a symbol-set guard register codes shared by every set.
     modifiers1.forEach((code) => commonModifier1.add(code));
     modifiers2.forEach((code) => commonModifier2.add(code));
+    extendedModifiers1.forEach((code) => commonExtendedModifier1.add(code));
+    extendedModifiers2.forEach((code) => commonExtendedModifier2.add(code));
     continue;
   }
 
@@ -59,12 +67,35 @@ for (const file of readdirSync(sourceDir).filter((f) => f.endsWith(".js"))) {
     entities.forEach((code) => add(entityCodes, symbolSet, code));
     modifiers1.forEach((code) => add(modifier1Codes, symbolSet, code));
     modifiers2.forEach((code) => add(modifier2Codes, symbolSet, code));
+    extendedModifiers1.forEach((code) =>
+      add(extendedModifier1Codes, symbolSet, code),
+    );
+    extendedModifiers2.forEach((code) =>
+      add(extendedModifier2Codes, symbolSet, code),
+    );
   }
 }
 
 for (const symbolSet of entityCodes.keys()) {
   commonModifier1.forEach((code) => add(modifier1Codes, symbolSet, code));
   commonModifier2.forEach((code) => add(modifier2Codes, symbolSet, code));
+}
+
+// Include sets represented only by modifier data (e.g. control measures).
+const catalogSets = new Set([
+  ...entityCodes.keys(),
+  ...modifier1Codes.keys(),
+  ...modifier2Codes.keys(),
+  ...extendedModifier1Codes.keys(),
+  ...extendedModifier2Codes.keys(),
+]);
+for (const symbolSet of catalogSets) {
+  commonExtendedModifier1.forEach((code) =>
+    add(extendedModifier1Codes, symbolSet, code),
+  );
+  commonExtendedModifier2.forEach((code) =>
+    add(extendedModifier2Codes, symbolSet, code),
+  );
 }
 
 function serialize(map) {
@@ -103,6 +134,14 @@ export const MODIFIER_1_CODES: Readonly<Record<string, readonly string[]>> =
 /** Two-digit modifier 2 codes milsymbol registers, keyed by symbol set. */
 export const MODIFIER_2_CODES: Readonly<Record<string, readonly string[]>> =
   ${serialize(modifier2Codes)};
+
+/** Registered three-digit modifier 1 codes, keyed by symbol set. */
+export const EXTENDED_MODIFIER_1_CODES: Readonly<Record<string, readonly string[]>> =
+  ${serialize(extendedModifier1Codes)};
+
+/** Registered three-digit modifier 2 codes, keyed by symbol set. */
+export const EXTENDED_MODIFIER_2_CODES: Readonly<Record<string, readonly string[]>> =
+  ${serialize(extendedModifier2Codes)};
 `;
 
 writeFileSync(
@@ -111,7 +150,8 @@ writeFileSync(
   "utf8",
 );
 
-const total = (map) => [...map.values()].reduce((sum, set) => sum + set.size, 0);
+const total = (map) =>
+  [...map.values()].reduce((sum, set) => sum + set.size, 0);
 console.log(
   `catalogs: ${entityCodes.size} symbol sets, ` +
     `${total(entityCodes)} entity codes, ` +

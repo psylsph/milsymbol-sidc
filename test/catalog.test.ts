@@ -5,6 +5,10 @@ import {
   CATALOG_SOURCE,
   catalogSymbolSets,
   entityCodes,
+  extendedModifier1Codes,
+  extendedModifier2Codes,
+  isKnownExtendedModifier1Code,
+  isKnownExtendedModifier2Code,
   hasCatalog,
   isKnownEntityCode,
   isKnownModifier1Code,
@@ -86,6 +90,33 @@ describe("catalog lookups", () => {
       isKnownModifier2Code("10", absentTwoDigitCode(modifiers2)),
       false,
     );
+  });
+
+  it("exposes common extended modifiers separately from ordinary codes", () => {
+    for (const set of catalogSymbolSets()) {
+      assert.equal(isKnownExtendedModifier1Code(set, "100"), true);
+      assert.equal(isKnownExtendedModifier1Code(set, "105"), true);
+      assert.equal(isKnownExtendedModifier2Code(set, "100"), true);
+      for (const codes of [
+        extendedModifier1Codes(set),
+        extendedModifier2Codes(set),
+      ]) {
+        assert.equal(Object.isFrozen(codes), true);
+        assert.deepEqual([...codes], [...new Set(codes)].sort());
+        for (const code of codes) assert.match(code, /^\d{3}$/);
+      }
+      for (const codes of [modifier1Codes(set), modifier2Codes(set)]) {
+        for (const code of codes) assert.match(code, /^\d{2}$/);
+      }
+      for (const code of ["199", "005", "00", "999"]) {
+        assert.equal(isKnownExtendedModifier1Code(set, code), false);
+        assert.equal(isKnownExtendedModifier2Code(set, code), false);
+      }
+    }
+    assert.deepEqual(extendedModifier1Codes("99"), []);
+    assert.deepEqual(extendedModifier2Codes("99"), []);
+    assert.equal(isKnownExtendedModifier1Code("99", "100"), false);
+    assert.equal(isKnownExtendedModifier2Code("99", "100"), false);
   });
 
   it("keeps symbol-set catalogs independent", () => {

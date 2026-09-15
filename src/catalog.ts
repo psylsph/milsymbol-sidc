@@ -20,6 +20,8 @@
 import {
   CATALOG_SOURCE,
   ENTITY_CODES,
+  EXTENDED_MODIFIER_1_CODES,
+  EXTENDED_MODIFIER_2_CODES,
   MODIFIER_1_CODES,
   MODIFIER_2_CODES,
 } from "./catalogs.generated.js";
@@ -33,6 +35,8 @@ const SYMBOL_SETS: ReadonlySet<string> = new Set([
   ...Object.keys(ENTITY_CODES),
   ...Object.keys(MODIFIER_1_CODES),
   ...Object.keys(MODIFIER_2_CODES),
+  ...Object.keys(EXTENDED_MODIFIER_1_CODES),
+  ...Object.keys(EXTENDED_MODIFIER_2_CODES),
 ]);
 
 function codesFor(
@@ -86,4 +90,30 @@ export function isKnownModifier2Code(
   modifier: string,
 ): boolean {
   return modifier2Codes(symbolSet).includes(modifier);
+}
+
+/** Registered three-digit modifier 1 codes, not zero-prefixed two-digit aliases. */
+export function extendedModifier1Codes(symbolSet: string): readonly string[] {
+  return codesFor(EXTENDED_MODIFIER_1_CODES, symbolSet);
+}
+
+/** Membership only: neither edition validation nor a rendering guarantee. */
+export function isKnownExtendedModifier1Code(
+  symbolSet: string,
+  modifier: string,
+): boolean {
+  return extendedModifier1Codes(symbolSet).includes(modifier);
+}
+
+/** Registered three-digit modifier 2 codes, not zero-prefixed two-digit aliases. */
+export function extendedModifier2Codes(symbolSet: string): readonly string[] {
+  return codesFor(EXTENDED_MODIFIER_2_CODES, symbolSet);
+}
+
+/** Membership only: neither edition validation nor a rendering guarantee. */
+export function isKnownExtendedModifier2Code(
+  symbolSet: string,
+  modifier: string,
+): boolean {
+  return extendedModifier2Codes(symbolSet).includes(modifier);
 }

@@ -1,6 +1,7 @@
 import {
   Amplifier,
   Context,
+  FrameShape,
   HqTaskForceDummy,
   Standard,
   StandardIdentity,
@@ -8,6 +9,13 @@ import {
   SymbolSet,
   Version,
 } from "./enums.js";
+
+/** Complete optional tail at positions 21–23. */
+export interface SidcExtension {
+  modifier1Extension: string;
+  modifier2Extension: string;
+  frameShape: FrameShape;
+}
 
 /** Fields encoded by the builder, keyed by SIDC position. */
 export interface SidcFields {
@@ -21,6 +29,8 @@ export interface SidcFields {
   entity: string;
   modifier1: string;
   modifier2: string;
+  /** Presence enables 23-character output; omitted members default to zero. */
+  extension?: Partial<SidcExtension>;
   /** Optional standard-family configuration used for defaults and validation. */
   standard?: Standard;
 }
@@ -50,6 +60,7 @@ export class SidcCombinationError extends SidcError {
 
 const SIX_DIGITS = /^\d{6}$/;
 const TWO_DIGITS = /^\d{2}$/;
+const THREE_DIGITS = /^\d{3}$/;
 const ONE_DIGIT = /^\d$/;
 
 // Codes milsymbol's number-based parser recognizes, including ones without
@@ -106,6 +117,12 @@ const SYMBOL_SET_NAMES: Readonly<Partial<Record<string, string>>> = {
   [SymbolSet.Cyberspace]: "cyberspace",
 };
 
+const KNOWN_EXTENSION_KEYS: ReadonlySet<string> = new Set([
+  "modifier1Extension",
+  "modifier2Extension",
+  "frameShape",
+]);
+
 /** Returns the latest supported version for a configured standard family. */
 export function defaultVersionForStandard(standard: Standard): Version {
   return STANDARD_DEFAULT_VERSIONS[standard];
@@ -131,7 +148,11 @@ function assertDigits(
   pattern: RegExp,
   length: number,
 ): void {
-  if (typeof value !== "string" || !pattern.test(value)) {
+  if (
+    typeof value !== "string" ||
+    value.length !== length ||
+    !pattern.test(value)
+  ) {
     throw new SidcValidationError(
       `${name} must be ${length} digit(s), got ${describeValue(value)}.`,
     );
@@ -141,6 +162,47 @@ function assertDigits(
 /** @internal Validates and stores a two-digit field (version or symbol set). */
 export function checkTwoDigitField(name: string, value: string): void {
   assertDigits(name, value, TWO_DIGITS, 2);
+}
+
+/** @internal Validates a complete three-digit modifier code. */
+export function checkThreeDigitField(name: string, value: string): void {
+  assertDigits(name, value, THREE_DIGITS, 3);
+}
+
+/** @internal Validates a frame-shape selector, including no-frame `A`. */
+export function checkFrameShape(value: string): void {
+  if (!Object.values(FrameShape).includes(value as FrameShape)) {
+    throw new SidcValidationError(
+      `Unknown frame shape ${describeValue(value)}.`,
+    );
+  }
+}
+
+/** @internal Copies, defaults, validates, and freezes an optional tail. */
+export function normalizeExtension(
+  value: Partial<SidcExtension> | undefined,
+): Readonly<SidcExtension> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new SidcValidationError("Extension must be a field record.");
+  }
+  for (const key in value) {
+    if (!KNOWN_EXTENSION_KEYS.has(key)) {
+      throw new SidcValidationError(`Unknown extension field "${key}".`);
+    }
+  }
+  const extension = {
+    modifier1Extension:
+      value.modifier1Extension === undefined ? "0" : value.modifier1Extension,
+    modifier2Extension:
+      value.modifier2Extension === undefined ? "0" : value.modifier2Extension,
+    frameShape:
+      value.frameShape === undefined ? FrameShape.Default : value.frameShape,
+  };
+  checkOneDigitField("Modifier 1 extension", extension.modifier1Extension);
+  checkOneDigitField("Modifier 2 extension", extension.modifier2Extension);
+  checkFrameShape(extension.frameShape);
+  return Object.freeze(extension);
 }
 
 /** @internal Validates a single-digit field (context, identity, status). */
@@ -202,13 +264,20 @@ export function checkStatus(value: string): void {
   }
 }
 
+/** Fields after constructor normalization: complete, frozen extension tail. */
+export type NormalizedSidcFields = Omit<SidcFields, "extension"> & {
+  readonly extension?: Readonly<SidcExtension>;
+};
+
 /**
- * @internal Validates a complete field record.
+ * @internal Validates a complete field record and returns it with the
+ * extension tail defaulted, validated, and frozen.
  *
  * The constructor uses this so every construction path enforces the same
- * digit-width and enum-membership invariants as the fluent setters.
+ * digit-width and enum-membership invariants as the fluent setters, and
+ * normalizes the tail exactly once.
  */
-export function checkFields(fields: SidcFields): void {
+export function checkFields(fields: SidcFields): NormalizedSidcFields {
   if (fields.standard !== undefined) {
     checkStandard(fields.standard);
   }
@@ -222,6 +291,7 @@ export function checkFields(fields: SidcFields): void {
   checkSixDigitField("Entity", fields.entity);
   checkTwoDigitField("Modifier 1", fields.modifier1);
   checkTwoDigitField("Modifier 2", fields.modifier2);
+  return { ...fields, extension: normalizeExtension(fields.extension) };
 }
 
 /** A non-fatal problem detected while rendering a SIDC. */
@@ -304,6 +374,22 @@ function combinationProblems(fields: SidcFields): SidcProblem[] {
       message:
         `Symbol set ${symbolSet} (${SYMBOL_SET_NAMES[symbolSet]}) is not ` +
         `supported by ${EDITION_NAMES[version]}.`,
+    });
+  }
+
+  const extension = fields.extension;
+  if (
+    ["10", "11", "12"].includes(version) &&
+    extension !== undefined &&
+    ((extension.modifier1Extension ?? "0") !== "0" ||
+      (extension.modifier2Extension ?? "0") !== "0" ||
+      (extension.frameShape ?? "0") !== "0")
+  ) {
+    problems.push({
+      code: "unsupported-extension-edition",
+      message:
+        `Non-default SIDC extensions are supported only for E editions; ` +
+        `version "${version}" is a D edition.`,
     });
   }
 

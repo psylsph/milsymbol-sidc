@@ -1,6 +1,7 @@
 export {
   Amplifier,
   Context,
+  FrameShape,
   HqTaskForceDummy,
   Standard,
   StandardIdentity,
@@ -15,6 +16,7 @@ export {
   SidcCombinationError,
   SidcError,
   SidcValidationError,
+  type SidcExtension,
   type SidcFields,
   type SidcProblem,
 } from "./validate.js";
