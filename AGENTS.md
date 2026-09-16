@@ -43,6 +43,11 @@ Run `npm run format` (or `npx prettier --write`) after editing `.ts`, `.json`, o
   identical across releases. Additive APIs are preferred over changed behavior.
 - `src/catalogs.generated.ts` is generated from the pinned `milsymbol` version.
   Never hand-edit it; run `npm run generate:catalogs`. CI fails if it is stale.
+- The `ts` code blocks in `README.md` are executed by
+  `test/readme-examples.test.ts`, which checks every trailing `// "..."`,
+  `// true`, `// false`, and `// undefined` comment against real behavior. If
+  you change an output, update the README comment — the test will fail
+  otherwise. Keep new examples runnable and keep the assertion format.
 - Follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html): breaking →
   major, new features → minor, fixes → patch. Pre-1.0, breaking changes may ship
   in a minor, but call them out clearly.

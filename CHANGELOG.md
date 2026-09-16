@@ -11,6 +11,13 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Tooling
+
+- README TypeScript examples are now executed by the test suite
+  (`test/readme-examples.test.ts`): every trailing `// "..."` / `// true` /
+  `// false` / `// undefined` comment is compared against the real library, so
+  documented outputs can no longer drift silently.
+
 ## [0.5.0] - 2026-09-15
 
 Opt-in SIDC positions 21–23 for MIL-STD-2525E / APP-6 E symbols — the three

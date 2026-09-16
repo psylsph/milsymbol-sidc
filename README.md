@@ -696,6 +696,10 @@ defaults, immutability, setter validation errors, extended-field offsets,
 all combination rules in both warn and strict modes, raw-code escape hatches,
 and error class hierarchy.
 
+The TypeScript snippets in this README are executed by
+`test/readme-examples.test.ts`: every trailing `// "..."` output comment is
+compared against the real library, so the examples cannot drift.
+
 ## Roadmap
 
 - Semantic entity and modifier names, layered on the membership catalog.
