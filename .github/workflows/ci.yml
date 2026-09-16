@@ -51,7 +51,7 @@ jobs:
         run: npm run format:check
 
       - name: Lint markdown
-        run: npx --yes markdownlint-cli@0.43.0 README.md docs/plans/*.md
+        run: npx --yes markdownlint-cli@0.43.0 README.md docs/plans/*.md CHANGELOG.md AGENTS.md
 
       - name: Build
         run: npm run build
