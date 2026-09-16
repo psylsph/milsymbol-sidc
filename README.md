@@ -142,8 +142,6 @@ otherwise `toString()` produces the classic 20-character SIDC.
 | 21       | Modifier 1 extension      | `extendedModifier1()` — hundreds digit of a three-digit code |
 | 22       | Modifier 2 extension      | `extendedModifier2()` — hundreds digit of a three-digit code |
 | 23       | Frame shape               | `frameShape()` — `0`–`9`, or `A` (no frame)                  |
-| 17–18    | Modifier 1                | `modifier1()` — two raw digits                               |
-| 19–20    | Modifier 2                | `modifier2()` — two raw digits                               |
 
 ## API
 

@@ -32,7 +32,13 @@ export const HqTaskForceDummy = {
 export type HqTaskForceDummy =
   (typeof HqTaskForceDummy)[keyof typeof HqTaskForceDummy];
 
-/** Positions 9-10: echelon, mobility, leadership, or auxiliary amplifier. */
+/**
+ * Positions 9-10: echelon, mobility, leadership, or auxiliary amplifier.
+ *
+ * Only the codes listed below are valid; ranges between code groups (e.g.
+ * "38"-"40" between Pack Animals and Over Snow Prime Mover) are unused in
+ * both MIL-STD-2525 and APP-6.
+ */
 export const Amplifier = {
   None: "00",
   TeamCrew: "11",

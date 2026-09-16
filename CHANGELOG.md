@@ -11,6 +11,14 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Fixed
+
+- README: removed duplicated modifier 1 / modifier 2 rows from the SIDC
+  position table (the surviving rows already documented both the raw and
+  extended setter forms).
+- Clarified the `Amplifier` doc comment: unlisted code ranges are unused in
+  MIL-STD-2525 and APP-6 rather than reserved.
+
 ### Tooling
 
 - README TypeScript examples are now executed by the test suite
