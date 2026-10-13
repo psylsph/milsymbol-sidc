@@ -11,6 +11,12 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+## [0.7.0] - 2026-10-13
+
+Named MIL-STD-2525D codes (optional `milsymbol-sidc/2525d` subpath) and a
+structured `entity()` form. Purely additive: existing calls and output are
+unchanged.
+
 ### Added
 
 - **Named MIL-STD-2525D codes** in the new optional `milsymbol-sidc/2525d`
@@ -288,7 +294,8 @@ Initial release: a fluent TypeScript builder for MIL-STD-2525E numeric
 - GitHub Actions workflow to auto-publish to npm on release, using npm trusted
   publishing (OIDC) with provenance.
 
-[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.7.0
 [0.6.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.6.0
 [0.5.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.5.0
 [0.4.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.4.0
