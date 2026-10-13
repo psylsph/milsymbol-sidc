@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Civil airliner – MIL-STD-2525D</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        max-width: 46rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      .layout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2rem;
+        align-items: flex-start;
+      }
+      #symbol {
+        min-width: 12rem;
+        min-height: 10rem;
+        display: grid;
+        place-items: center;
+        border: 1px solid #8884;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: #fff;
+      }
+      fieldset {
+        border: 1px solid #8884;
+        border-radius: 0.5rem;
+      }
+      label {
+        display: block;
+        margin: 0.25rem 0;
+      }
+      #sidc {
+        font:
+          600 1.25rem ui-monospace,
+          monospace;
+        letter-spacing: 0.05em;
+      }
+      table {
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+      }
+      td,
+      th {
+        padding: 0.15rem 0.6rem;
+        border-bottom: 1px solid #8883;
+        text-align: left;
+      }
+      td:nth-child(2) {
+        font-family: ui-monospace, monospace;
+      }
+      .ok {
+        color: #2a7d2a;
+      }
+      .warn {
+        color: #b3261e;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Civil airliner (MIL-STD-2525D)</h1>
+    <p>
+      Built with <code>milsymbol-sidc</code> and drawn with
+      <code>milsymbol</code>. Change the options to see how the SIDC changes.
+    </p>
+
+    <div class="layout">
+      <div id="symbol" aria-live="polite"></div>
+
+      <form id="options">
+        <fieldset>
+          <legend>Options</legend>
+          <label>
+            Identity
+            <select name="identity">
+              <option value="Neutral" selected>Neutral (civil traffic)</option>
+              <option value="Unknown">Unknown</option>
+              <option value="Pending">Pending</option>
+              <option value="AssumedFriend">Assumed friend</option>
+              <option value="Friend">Friend</option>
+              <option value="SuspectJoker">Suspect</option>
+              <option value="HostileFaker">Hostile</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" name="heavy" /> Heavy (modifier 2 "01")
+          </label>
+          <label>
+            <input type="checkbox" name="hijacked" /> Hijacking (modifier 1 "37"
+            instead of passenger "09")
+          </label>
+        </fieldset>
+      </form>
+    </div>
+
+    <h2>SIDC</h2>
+    <p id="sidc"></p>
+    <p id="status"></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Positions</th>
+          <th>Code</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody id="breakdown"></tbody>
+    </table>
+
+    <script type="module">
+      // Pinned CDN builds; swap for local imports in a bundled app:
+      //   import ms from "milsymbol";
+      //   import { Sidc, ... } from "milsymbol-sidc";
+      import ms from "https://cdn.jsdelivr.net/npm/milsymbol@3.0.4/+esm";
+      import {
+        Sidc,
+        Standard,
+        StandardIdentity,
+        SymbolSet,
+        Version,
+      } from "https://cdn.jsdelivr.net/npm/milsymbol-sidc@0.6.0/+esm";
+
+      const form = document.getElementById("options");
+
+      // Passenger air track in the Air symbol set, MIL-STD-2525D. No entity
+      // is set (000000), so the fill follows the identity: friendly and
+      // assumed-friend tracks are light blue, neutral green, and so on. Add
+      // .entity("120100") (civilian fixed-wing) to get milsymbol's civilian
+      // magenta instead.
+      const base = new Sidc({ standard: Standard.MilStd2525, strict: true })
+        .version(Version.MilStd2525D)
+        .symbolSet(SymbolSet.Air);
+
+      function build() {
+        const data = new FormData(form);
+        return base
+          .identity(StandardIdentity[data.get("identity")])
+          .modifier1(data.get("hijacked") ? "37" : "00")
+          .modifier2(data.get("heavy") ? "01" : "00");
+      }
+
+      function render() {
+        const builder = build();
+        const sidc = builder.toString(); // strict: throws on any problem
+        const symbol = new ms.Symbol(sidc, { size: 110, standard: "2525" });
+
+        document.getElementById("symbol").innerHTML = symbol.asSVG();
+        document.getElementById("sidc").textContent = sidc;
+
+        const status = document.getElementById("status");
+        status.className = symbol.isValid() ? "ok" : "warn";
+        status.textContent = symbol.isValid()
+          ? "✓ Valid in milsymbol (edition " +
+            symbol.getMetadata().edition +
+            ")"
+          : "✗ milsymbol could not draw every part of this SIDC";
+
+        const f = builder.toObject();
+        const rows = [
+          ["1–2", f.version, "Version: MIL-STD-2525D"],
+          ["3", f.context, "Context: reality"],
+          [
+            "4",
+            f.identity,
+            "Identity: " + form.identity.selectedOptions[0].text,
+          ],
+          ["5–6", f.symbolSet, "Symbol set: air"],
+          ["7", f.status, "Status: present"],
+          ["8", f.hqTaskForceDummy, "HQ / task force / dummy: none"],
+          ["9–10", f.amplifier, "Amplifier: none"],
+          ["11–16", f.entity, "Entity: none (generic air track)"],
+          [
+            "17–18",
+            f.modifier1,
+            f.modifier1 === "37"
+              ? "Modifier 1: hijacking"
+              : "Modifier 1: passenger",
+          ],
+          [
+            "19–20",
+            f.modifier2,
+            f.modifier2 === "01" ? "Modifier 2: heavy" : "Modifier 2: none",
+          ],
+        ];
+        const body = document.getElementById("breakdown");
+        body.replaceChildren(
+          ...rows.map((cells) => {
+            const tr = document.createElement("tr");
+            for (const text of cells) {
+              const td = document.createElement("td");
+              td.textContent = text;
+              tr.append(td);
+            }
+            return tr;
+          }),
+        );
+      }
+
+      form.addEventListener("change", render);
+      render();
+    </script>
+  </body>
+</html>
