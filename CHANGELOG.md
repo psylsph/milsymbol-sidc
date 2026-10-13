@@ -11,6 +11,12 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+## [0.6.0] - 2026-10-13
+
+Catalog correctness fixes (control measures, phantom codes), stricter and more
+informative validation, MIL-STD-2525D documentation, and a GitHub Packages
+mirror. Contains one breaking change, limited to `strict: true` builders.
+
 ### Breaking
 
 - **Strict mode only:** `strict: true` now also rejects unrecognized
@@ -252,7 +258,8 @@ Initial release: a fluent TypeScript builder for MIL-STD-2525E numeric
 - GitHub Actions workflow to auto-publish to npm on release, using npm trusted
   publishing (OIDC) with provenance.
 
-[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.6.0
 [0.5.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.5.0
 [0.4.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.4.0
 [0.3.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.3.0
