@@ -1,0 +1,10 @@
+milsymbol-sidc
+Copyright (c) Stuart Harding. Licensed under the MIT License (see LICENSE).
+
+This product includes MIL-STD-2525D entity and modifier names derived from
+the Joint Military Symbology Markup Language (JMSML)
+https://github.com/Esri/joint-military-symbology-xml
+(commit 094e7647f0bdd001e42fd2a73ba802c995af20aa), licensed under the Apache
+License, Version 2.0 (see data/JMSML-LICENSE.txt). The names were converted to
+TypeScript identifiers by scripts/generate-names.mjs; the changed form is
+src/names-2525d.generated.ts (labels and codes are unchanged).

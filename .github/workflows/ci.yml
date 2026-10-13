@@ -51,13 +51,16 @@ jobs:
         run: npm run format:check
 
       - name: Lint markdown
-        run: npx --yes markdownlint-cli@0.43.0 README.md docs/plans/*.md CHANGELOG.md AGENTS.md
+        run: npx --yes markdownlint-cli@0.43.0 README.md docs/plans/*.md CHANGELOG.md AGENTS.md examples/civil-airliner/README.md
 
       - name: Build
         run: npm run build
 
       - name: Check generated catalogs are current
         run: npm run generate:catalogs && git diff --exit-code -- src/catalogs.generated.ts
+
+      - name: Check generated names are current
+        run: npm run generate:names && git diff --exit-code -- src/names-2525d.generated.ts
 
       - name: Test with coverage
         run: node --test --experimental-test-coverage dist/test/*.test.js

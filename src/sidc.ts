@@ -10,6 +10,12 @@ import {
   Version,
 } from "./enums.js";
 import {
+  isNamedCode,
+  type NamedCode,
+  type NamedCodeKind,
+  type SidcEntityParts,
+} from "./named-code.js";
+import {
   checkAmplifier,
   checkContext,
   checkFields,
@@ -218,17 +224,113 @@ export class Sidc {
     return this.with({ amplifier: value });
   }
 
-  /** Positions 11-16: six-digit entity code. */
-  entity(value: string): Sidc {
-    checkSixDigitField("Entity", value);
-    return this.with({ entity: value });
+  /**
+   * Positions 11-16: entity code. Accepts the six-digit string, a named entity
+   * (for example `Air.Entity.Civilian.FixedWing` from `milsymbol-sidc/2525d`),
+   * or its levels: `{ entity: "12", type: "01" }`. Omitted type and subtype
+   * default to `"00"`.
+   */
+  entity(value: string | NamedCode<"entity"> | SidcEntityParts): Sidc {
+    if (isEntityParts(value)) {
+      return this.entityFromParts(value);
+    }
+    const { code, symbolSet } = this.resolveNamed(value, "entity", "Entity");
+    checkSixDigitField("Entity", code);
+    return this.with({
+      entity: code,
+      ...(symbolSet === undefined ? {} : { symbolSet }),
+    });
+  }
+
+  /**
+   * The three levels of the entity code: positions 11-12, 13-14 and 15-16.
+   * The inverse of `entity({ entity, type, subtype })`.
+   */
+  entityParts(): { entity: string; type: string; subtype: string } {
+    const { entity } = this.fields;
+    return {
+      entity: entity.slice(0, 2),
+      type: entity.slice(2, 4),
+      subtype: entity.slice(4, 6),
+    };
+  }
+
+  private entityFromParts(parts: SidcEntityParts): Sidc {
+    for (const key of Object.keys(parts)) {
+      if (key !== "entity" && key !== "type" && key !== "subtype") {
+        throw new SidcValidationError(`Unknown entity part "${key}".`);
+      }
+    }
+    let symbolSet: string | undefined;
+    let subtype = parts.subtype ?? "00";
+    if (isNamedCode(subtype)) {
+      const resolved = this.resolveNamed(
+        subtype,
+        "specialSubtype",
+        "Entity subtype",
+      );
+      subtype = resolved.code;
+      symbolSet = resolved.symbolSet;
+    }
+    const levels: [string, string][] = [
+      ["Entity", parts.entity],
+      ["Entity type", parts.type ?? "00"],
+      ["Entity subtype", subtype],
+    ];
+    for (const [name, level] of levels) {
+      checkTwoDigitField(name, level);
+    }
+    return this.with({
+      entity: levels.map(([, level]) => level).join(""),
+      ...(symbolSet === undefined ? {} : { symbolSet }),
+    });
+  }
+
+  /**
+   * Resolves a string or named code. Strings pass through untouched (so every
+   * existing call behaves exactly as before). A named code must be meant for
+   * this setter and symbol set; while the builder's symbol set is still the
+   * default `"00"`, a named code's own symbol set is adopted.
+   */
+  private resolveNamed(
+    value: unknown,
+    kind: NamedCodeKind,
+    name: string,
+  ): { code: string; symbolSet?: string } {
+    if (!isNamedCode(value)) {
+      return { code: value as string };
+    }
+    if (value.kind !== undefined && value.kind !== kind) {
+      throw new SidcValidationError(
+        `${name} cannot be set from ${article(value.kind)} ${value.kind} code (${describeNamed(value)}).`,
+      );
+    }
+    const own = value.symbolSet;
+    const current = this.fields.symbolSet;
+    // Symbol set "00" holds only the "none" codes (000000, 00), which are
+    // valid in every set, so they never conflict.
+    if (own === undefined || own === current || own === SymbolSet.Unknown) {
+      return { code: value.code };
+    }
+    if (current === SymbolSet.Unknown) {
+      return { code: value.code, symbolSet: own };
+    }
+    throw new SidcValidationError(
+      `${name} ${describeNamed(value)} belongs to symbol set ${own}, not ${current}.`,
+    );
   }
 
   /** Positions 17–18: two-digit modifier 1; clears its high digit if extended. */
-  modifier1(value: string): Sidc {
-    checkTwoDigitField("Modifier 1", value);
+  modifier1(value: string | NamedCode<"modifier1">): Sidc {
+    const { code, symbolSet } = this.resolveNamed(
+      value,
+      "modifier1",
+      "Modifier 1",
+    );
+    checkTwoDigitField("Modifier 1", code);
     return this.with({
-      modifier1: value,
+      ...(symbolSet === undefined ? {} : { symbolSet }),
+      modifier1: code,
       extension:
         this.fields.extension === undefined
           ? undefined
@@ -237,10 +339,16 @@ export class Sidc {
   }
 
   /** Positions 19–20: two-digit modifier 2; clears its high digit if extended. */
-  modifier2(value: string): Sidc {
-    checkTwoDigitField("Modifier 2", value);
+  modifier2(value: string | NamedCode<"modifier2">): Sidc {
+    const { code, symbolSet } = this.resolveNamed(
+      value,
+      "modifier2",
+      "Modifier 2",
+    );
+    checkTwoDigitField("Modifier 2", code);
     return this.with({
-      modifier2: value,
+      ...(symbolSet === undefined ? {} : { symbolSet }),
+      modifier2: code,
       extension:
         this.fields.extension === undefined
           ? undefined
@@ -298,9 +406,12 @@ export class Sidc {
   }
 
   /** Positions 5-6: symbol set. Accepts known codes or a raw two-digit code. */
-  symbolSet(symbolSet: SymbolSet | (string & {})): Sidc {
-    checkTwoDigitField("Symbol set", symbolSet);
-    return this.with({ symbolSet });
+  symbolSet(
+    symbolSet: SymbolSet | (string & {}) | NamedCode<"symbolSet">,
+  ): Sidc {
+    const { code } = this.resolveNamed(symbolSet, "symbolSet", "Symbol set");
+    checkTwoDigitField("Symbol set", code);
+    return this.with({ symbolSet: code });
   }
 
   /** Position 7: status / condition. */
@@ -531,6 +642,30 @@ function assertKnownFields(
   if (unknown !== undefined) {
     throw new SidcValidationError(`Unknown field "${unknown}".`);
   }
+}
+
+/**
+ * `true` for a structured entity record. Decided by its own level keys, so a
+ * record is never mistaken for a named code (or the reverse) by an extra key,
+ * and any other object input keeps the original string-path error.
+ */
+function isEntityParts(value: unknown): value is SidcEntityParts {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    ["entity", "type", "subtype"].some((key) =>
+      Object.prototype.hasOwnProperty.call(value, key),
+    )
+  );
+}
+
+const article = (word: string): string => (/^[aeiou]/i.test(word) ? "an" : "a");
+
+function describeNamed(value: NamedCode): string {
+  return value.label === undefined
+    ? `"${value.code}"`
+    : `"${value.label}" ("${value.code}")`;
 }
 
 /** The anchored pattern alone admits exactly the 20- and 23-character forms. */

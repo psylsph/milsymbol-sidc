@@ -559,6 +559,73 @@ code; frame shapes `1`–`9`, by contrast, are ignored for D editions.
 Leave `strict` off (or use `onWarning`) if you deliberately mix E-only content
 into D codes.
 
+For a complete 2525D sample, see
+[`examples/civil-airliner`](examples/civil-airliner): an interactive browser
+page and a Node script that render a passenger air track
+(`10040100000000000900`) with milsymbol.
+
+## Named codes (MIL-STD-2525D, optional)
+
+Entity and modifier codes are digit strings. The optional
+`milsymbol-sidc/2525d` subpath adds names from the standard, scoped by symbol
+set, so the same call reads `Air.Modifier1.Passenger` instead of `"09"`:
+
+```ts
+import { Sidc, StandardIdentity, Version } from "milsymbol-sidc";
+import { Air, describe2525d } from "milsymbol-sidc/2525d";
+
+const airliner = new Sidc()
+  .version(Version.MilStd2525D)
+  .identity(StandardIdentity.Friend)
+  .symbolSet(Air) // symbol set 01 (also adopted from any named entity or modifier)
+  .entity(Air.Entity.Civilian.FixedWing) // civilian fixed-wing, 120100
+  .modifier1(Air.Modifier1.Passenger) // passenger, 09
+  .modifier2(Air.Modifier2.Heavy);
+
+airliner.toString(); // "10030100001201000901"
+
+Air.Modifier1.Passenger.code; // "09"
+Air.Modifier1.Passenger.label; // "Passenger"
+describe2525d("10030100001201000901").modifier1?.label; // "Passenger"
+describe2525d("10030100001201000901").entityType?.label; // "Fixed Wing"
+```
+
+Each name is a frozen object with its `code`, `label`, `kind`, and `symbolSet`.
+The setters accept it anywhere they accept the raw string; strings keep working
+exactly as before, and the stored fields and output are identical.
+
+- A named code belongs to one symbol set. Passing `Air.Modifier1.Passenger` to
+  a land-unit builder throws `SidcValidationError`, because `"09"` means
+  something else there. While the builder's symbol set is `"00"` (the default,
+  or set explicitly), the named code's symbol set is adopted.
+- Every named code can only go to its own setter (an entity name to `entity()`,
+  and so on).
+- Names are checked when they are applied. Changing `symbolSet()` afterwards is
+  not re-checked, so call it first (or let the first name set it), and the
+  builder's version is not checked either: set
+  `.version(Version.MilStd2525D)`, because the default is edition E, whose
+  codes can mean something else. The special `Unknown` names (`000000`, `00`)
+  are accepted in any symbol set.
+- Entity codes are three two-digit levels (entity, type, subtype). Name any
+  level, or pass the levels directly, in which case omitted levels are `"00"`:
+
+```ts
+import { Sidc } from "milsymbol-sidc";
+
+new Sidc().entity({ entity: "12", type: "01" }).toObject().entity; // "120100"
+new Sidc().entity("120100").entityParts().type; // "01"
+```
+
+The names are generated from Esri's
+[Joint Military Symbology Markup Language](https://github.com/Esri/joint-military-symbology-xml)
+(Apache-2.0, pinned commit recorded in `NAMES_SOURCE`) and describe
+**MIL-STD-2525D only**. Names exist for codes milsymbol cannot draw (line and
+area control measures), and symbol set 27 has none because it is not part of
+edition D. Each symbol set is its own export, so a bundle that imports only
+`Air` contains only the air names (`describe2525d()` references every set, so
+using it brings them all in). `describe2525d()` returns no names for edition E
+versions or three-digit extended modifiers. See `NOTICE` for attribution.
+
 ## Catalogs (optional)
 
 The `milsymbol-sidc/catalogs` subpath exposes a membership catalog generated from

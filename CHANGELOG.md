@@ -11,6 +11,32 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Added
+
+- **Named MIL-STD-2525D codes** in the new optional `milsymbol-sidc/2525d`
+  subpath: one export per symbol set (`Air`, `LandUnit`, …) with hierarchical
+  `Entity`, flat `Modifier1`, `Modifier2`, and `SpecialSubtype` names, each a
+  frozen `{ code, label, kind, symbolSet }` object, plus `describe2525d()` for
+  reverse lookup. Names are generated from Esri's JMSML (Apache-2.0, pinned
+  commit in `NAMES_SOURCE`) and describe edition D only; symbol set 27 has none.
+  The main entry point and its output are unchanged, and unused symbol sets
+  tree-shake away (about 6 KB for a bundle importing only `Air`; using
+  `describe2525d()` brings every set in). `describe2525d()` returns no names
+  for edition E versions or three-digit extended modifiers.
+- `symbolSet()`, `entity()`, `modifier1()`, and `modifier2()` also accept named
+  codes (or any `{ code }` object; checked when applied, not re-checked if
+  `symbolSet()` changes later, and the builder version is not checked). Raw strings behave exactly as before. A
+  named code is rejected on another symbol set or the wrong setter; while the
+  builder's symbol set is `"00"`, the named code's symbol set is adopted.
+- `entity()` also accepts its levels, `{ entity: "12", type: "01" }` (omitted
+  levels default to `"00"`, and a special subtype name is allowed), and
+  `entityParts()` reads them back. Both are encoded identically to the string.
+- `NOTICE` and `data/JMSML-LICENSE.txt` ship in the package with the Apache-2.0
+  attribution for the JMSML-derived names.
+- `examples/civil-airliner`: a MIL-STD-2525D sample (interactive browser page
+  plus a Node script writing SVGs) that builds and renders a passenger air
+  track, `10040100000000000900`, with milsymbol.
+
 ## [0.6.0] - 2026-10-13
 
 Catalog correctness fixes (control measures, phantom codes), stricter and more
@@ -97,6 +123,10 @@ mirror. Contains one breaking change, limited to `strict: true` builders.
 
 ### Tooling
 
+- `npm run import:jmsml` (network; rarely) snapshots the pinned JMSML commit
+  into `data/jmsml-2525d.json`; `npm run generate:names` builds
+  `src/names-2525d.generated.ts` from it offline, with hand-picked short names
+  in `scripts/name-overrides.json`. CI fails if the generated file is stale.
 - `publish.yml` now also mirrors each release to GitHub Packages as
   `@psylsph/milsymbol-sidc`, in a separate job after the npm publish, so the
   package is listed on the repository page. npm (unscoped `milsymbol-sidc`)

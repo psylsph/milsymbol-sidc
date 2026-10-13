@@ -14,19 +14,28 @@
       "types": "./dist/src/catalog.d.ts",
       "default": "./dist/src/catalog.js"
     },
+    "./2525d": {
+      "types": "./dist/src/names-2525d.d.ts",
+      "default": "./dist/src/names-2525d.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/src"
+    "dist/src",
+    "data/JMSML-LICENSE.txt",
+    "NOTICE"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "generate:catalogs": "node scripts/generate-catalogs.mjs && prettier --write src/catalogs.generated.ts",
     "test": "npm run build && node --test dist/test/*.test.js",
     "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" package.json tsconfig.json \".github/**/*.yml\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" package.json tsconfig.json \".github/**/*.yml\"",
-    "prepack": "npm run build"
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.{mjs,json}\" \"examples/**/*.{html,mjs}\" data/jmsml-2525d.json package.json tsconfig.json \".github/**/*.yml\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.{mjs,json}\" \"examples/**/*.{html,mjs}\" data/jmsml-2525d.json package.json tsconfig.json \".github/**/*.yml\"",
+    "prepack": "npm run build",
+    "generate:names": "node scripts/generate-names.mjs && prettier --write src/names-2525d.generated.ts",
+    "import:jmsml": "node scripts/import-jmsml.mjs && prettier --write data/jmsml-2525d.json"
   },
   "engines": {
     "node": ">=18"
@@ -51,7 +60,9 @@
     "c2",
     "typescript",
     "builder",
-    "fluent-api"
+    "fluent-api",
+    "mil-std-2525d",
+    "jmsml"
   ],
   "license": "MIT",
   "author": "Stuart Harding",

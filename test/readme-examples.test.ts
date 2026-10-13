@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import * as catalogModule from "../src/catalog.js";
+import * as namesModule from "../src/names-2525d.js";
 import * as sidcModule from "../src/index.js";
 
 /**
@@ -35,7 +36,7 @@ interface Statement {
 type Expected = { matched: true; value: unknown } | { matched: false };
 
 const BASE_SCOPE: Record<string, unknown> = {};
-for (const source of [sidcModule, catalogModule]) {
+for (const source of [sidcModule, catalogModule, namesModule]) {
   for (const [name, value] of Object.entries(source)) {
     if (/^[A-Za-z_$][\w$]*$/.test(name)) {
       BASE_SCOPE[name] = value;
