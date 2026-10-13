@@ -75,6 +75,11 @@ supports manual `workflow_dispatch`). It uses npm trusted publishing (OIDC) with
 automatic provenance, so no token or `.npmrc` is needed. The version in
 `package.json` is what gets published — the git tag must match it.
 
+A second job then mirrors the same version to GitHub Packages as
+`@psylsph/milsymbol-sidc` (GitHub's npm registry requires a scoped name), using
+the workflow's `GITHUB_TOKEN`. This is what lists the package on the repository
+page; npmjs.com remains the primary registry under the unscoped name.
+
 Do the following in order, from an up-to-date `main` with a clean working tree.
 
 ### 1. Sync and verify the base
@@ -157,15 +162,19 @@ Publishing the release triggers `publish.yml`.
 
 ### 7. Verify the publish
 
-Watch the workflow and confirm the npm package and provenance:
+Watch the workflow and confirm the npm package and provenance, and the GitHub
+Packages mirror:
 
 ```bash
 gh run watch
 npm view milsymbol-sidc version
+gh api /users/psylsph/packages/npm/milsymbol-sidc/versions --jq '.[0].name'
 ```
 
 Also confirm the release notes on GitHub match the changelog section.
 
 If the publish workflow fails, fix the cause, and re-run it with
 `gh workflow run publish.yml` (or re-publish the release) rather than tagging a
-new version.
+new version. If only the GitHub Packages job failed, re-run just that job
+(`gh run rerun <run-id> --failed`); re-running the npm job would fail because
+the version is already on npm.
