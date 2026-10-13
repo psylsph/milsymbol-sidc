@@ -55,6 +55,13 @@ yarn add milsymbol-sidc
 pnpm add milsymbol-sidc
 ```
 
+Each release is also mirrored to GitHub Packages as
+[`@psylsph/milsymbol-sidc`](https://github.com/psylsph/milsymbol-sidc/pkgs/npm/milsymbol-sidc)
+(GitHub's npm registry requires a scoped name). npm is the recommended
+source; installing from GitHub Packages needs
+`@psylsph:registry=https://npm.pkg.github.com` in your `.npmrc` and, usually, a
+GitHub token.
+
 The rendering examples use [`milsymbol`](https://github.com/spatialillusions/milsymbol)
 to draw the generated SIDC. It is **not** a dependency of this package —
 `milsymbol-sidc` has zero runtime dependencies — so install it alongside when
@@ -153,7 +160,7 @@ Present. This remains the default for backward compatibility; configure
 
 | Option      | Type                             | Default                         | Description                                                                                                                                                                                                                 |
 | ----------- | -------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `strict`    | `boolean`                        | `false`                         | Throw on invalid field combinations during `toString()` instead of warning. Invalid values always throw immediately regardless of this flag.                                                                                |
+| `strict`    | `boolean`                        | `false`                         | Throw on invalid field combinations during `toString()` instead of warning, and reject unknown field keys in `with()`/the constructor. Invalid values always throw immediately.                                             |
 | `standard`  | `Standard`                       | Not configured (2525E behavior) | Select a standard family. `App6` defaults the version to APP-6 E (`"14"`); `MilStd2525` defaults it to MIL-STD-2525E (`"13"`). Explicit configuration also checks that later version choices belong to the selected family. |
 | `onWarning` | `(problem: SidcProblem) => void` | `console.warn`                  | Receive non-fatal problems instead of writing to the console. `strict: true` still throws instead of reporting.                                                                                                             |
 
@@ -181,11 +188,11 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `toString()`                 | —                                  | Validates combinations and renders the 20- or 23-character SIDC                                                    |
 | `problems()`                 | —                                  | Structured list of non-fatal problems; never throws                                                                |
 | `isValid()`                  | —                                  | `true` when `problems()` is empty                                                                                  |
-| `with(fields)`               | —                                  | Applies a partial field record immutably; validates like the setters                                               |
+| `with(fields)`               | —                                  | Applies a partial field record immutably; validates like the setters (unknown keys: see `strict`)                  |
 | `clone()`                    | —                                  | Copies the fields into an independent builder                                                                      |
 | `equals(other)`              | —                                  | Compares encoded fields, ignoring `strict` and `standard`                                                          |
 | `toObject()` / `toJSON()`    | —                                  | Plain, serializable snapshot of every encoded field                                                                |
-| `Sidc.parse(s, options?)`    | —                                  | Parses a 20- or 23-character numeric SIDC; throws when invalid                                                     |
+| `Sidc.parse(s, options?)`    | —                                  | Parses a 20- or 23-character numeric SIDC; throws when invalid, naming any unknown field code                      |
 | `Sidc.tryParse(s, options?)` | —                                  | Parses a SIDC or returns `undefined`                                                                               |
 
 ### Enum reference
@@ -371,10 +378,10 @@ Active combination rules:
 - Symbol set 27 is unsupported in MIL-STD-2525D; symbol set 60 is unsupported
   in APP-6 D.
 - Non-default extension values (nonzero modifier extension digits or a frame
-  shape other than `Default`) are reported for D-edition versions `"10"`,
-  `"11"`, and `"12"`. This is the library's support policy, not a milsymbol
-  restriction: upstream consumes positions 21–22 and `A` on any edition, while
-  shape selectors `1`–`9` only take effect for E editions. Explicit all-zero
+  shape selector `1`–`9`) are reported for D-edition versions `"10"`, `"11"`,
+  and `"12"`. Shape selectors `1`–`9` only take effect upstream for E editions;
+  reporting positions 21–22 is the library's support policy. `NoFrame` (`A`) is
+  honored by milsymbol on every edition and never warns. Explicit all-zero
   tails never warn.
 - When a `Standard` is explicitly configured, official version codes from the
   other standard family are reported.
@@ -396,6 +403,9 @@ import {
 
 // Throws immediately: "9" is not a valid identity code.
 new Sidc().identity("9" as never); // SidcValidationError
+
+// strict mode also rejects misspelled field keys (ignored otherwise).
+new Sidc({ strict: true }).with({ entitty: "123456" } as never); // SidcValidationError
 
 // Suspect/Joker and Hostile/Faker are dual-use: valid in reality AND exercise.
 new Sidc({ strict: true })
@@ -484,6 +494,11 @@ sidc.toObject().entity; // "123456"
 
 sidc.with({ modifier1: "02" }).toString(); // "14031002161234560209"
 Sidc.tryParse("not-a-sidc"); // undefined
+
+// Well-formed but holding an unknown amplifier code "99". parse() throws:
+// Invalid 20- or 23-character SIDC "13031000990000000000". Unknown amplifier code "99".
+// with the underlying field error available as `error.cause`.
+Sidc.tryParse("13031000990000000000"); // undefined
 ```
 
 Round-tripping is guaranteed: `Sidc.parse(s).toString() === s` for any string
@@ -493,6 +508,56 @@ code padded with a zero tail render identically in milsymbol but compare as
 unequal builders, mirroring the different strings. Only the 20- and
 23-character numeric forms are supported; letter-based SIDCs, 21/22-character
 input, and positions 24–30 are not.
+
+## Working with MIL-STD-2525D
+
+Edition D is version `"10"`. Configure the 2525 family and select the edition
+explicitly; `standard()` keeps an edition that already belongs to the family,
+so a D builder stays D:
+
+```ts
+import {
+  Amplifier,
+  FrameShape,
+  Sidc,
+  Standard,
+  StandardIdentity,
+  SymbolSet,
+  Version,
+} from "milsymbol-sidc";
+
+const friendlyUnit = new Sidc({ standard: Standard.MilStd2525, strict: true })
+  .version(Version.MilStd2525D)
+  .identity(StandardIdentity.Friend)
+  .symbolSet(SymbolSet.LandUnit);
+
+// Friendly infantry company
+friendlyUnit
+  .entity("121100")
+  .amplifier(Amplifier.CompanyBatteryTroop)
+  .toString(); // "10031000151211000000"
+
+friendlyUnit.standard(Standard.MilStd2525).toString(); // "10031000000000000000"
+
+// Existing 2525D codes parse and round-trip unchanged
+Sidc.parse("10031000141211000000").toObject().version; // "10"
+
+// The no-frame selector is honored on D editions too
+friendlyUnit.frameShape(FrameShape.NoFrame).toString(); // "1003100000000000000000A"
+
+// Content that is not part of 2525D is reported
+friendlyUnit.symbolSet(SymbolSet.LandDismountedIndividual).isValid(); // false
+friendlyUnit.extendedModifier1("100").isValid(); // false
+friendlyUnit.frameShape(FrameShape.Air).isValid(); // false
+friendlyUnit.symbolSet(SymbolSet.Cyberspace).isValid(); // true
+```
+
+These D-edition reports describe the standard, not milsymbol's rendering.
+milsymbol's default build registers every symbol module for every version, so
+it still draws dismounted individuals and extended modifiers for a `"10"`
+code; frame shapes `1`–`9`, by contrast, are ignored for D editions.
+Leave `strict` off (or use `onWarning`) if you deliberately mix E-only content
+into D codes.
 
 ## Catalogs (optional)
 
@@ -521,8 +586,12 @@ extendedModifier1Codes("10").length; // registered three-digit modifier 1 codes
 
 The catalog is **membership only**: it carries no semantic names and is never
 consulted by `toString()`, so raw entity and modifier values still encode
-without recognition warnings. Regenerate it with `npm run generate:catalogs`;
-the milsymbol version it was derived from is exported as `CATALOG_SOURCE`.
+without recognition warnings. Entity and modifier codes milsymbol reports as
+invalid (such as placeholder registrations with an undefined icon) are left
+out; registrations milsymbol accepts but draws as nothing (an empty icon list)
+are kept, because milsymbol treats them as valid. Regenerate it with
+`npm run generate:catalogs`; the milsymbol version it was derived from is
+exported as `CATALOG_SOURCE`.
 
 ## Using with milsymbol
 
@@ -660,7 +729,7 @@ new Sidc({ strict: true })
   .extendedModifier2("100")
   .toString(); // "13031000001100000000110"
 
-// Frame shape "A" suppresses the frame for E-edition symbols
+// Frame shape "A" suppresses the frame (honored on every edition)
 new Sidc({ strict: true })
   .identity(StandardIdentity.Friend)
   .symbolSet(SymbolSet.LandUnit)

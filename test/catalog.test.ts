@@ -124,4 +124,34 @@ describe("catalog lookups", () => {
     const seaSurface = new Set(entityCodes("30"));
     assert.notDeepEqual([...landUnit].sort(), [...seaSurface].sort());
   });
+
+  it("registers control-measure entities named by milsymbol's `sidc` map", () => {
+    assert.ok(entityCodes("25").length > 0);
+    assert.equal(isKnownEntityCode("25", "130100"), true);
+    // Registered with a placeholder icon that milsymbol cannot render.
+    assert.equal(isKnownEntityCode("25", "280100"), false);
+  });
+
+  it("ignores codes inside commented-out milsymbol source", () => {
+    assert.equal(isKnownEntityCode("27", "110317"), false);
+    assert.equal(isKnownEntityCode("27", "110412"), false);
+    assert.equal(isKnownModifier1Code("27", "56"), false);
+    assert.equal(isKnownModifier1Code("36", "01"), false);
+  });
+
+  it("treats Object.prototype keys as unknown symbol sets", () => {
+    for (const key of [
+      "constructor",
+      "__proto__",
+      "toString",
+      "hasOwnProperty",
+    ]) {
+      assert.deepEqual(entityCodes(key), []);
+      assert.deepEqual(modifier1Codes(key), []);
+      assert.deepEqual(extendedModifier2Codes(key), []);
+      assert.equal(isKnownEntityCode(key, "110000"), false);
+      assert.equal(isKnownModifier2Code(key, "01"), false);
+      assert.equal(hasCatalog(key), false);
+    }
+  });
 });

@@ -36,24 +36,24 @@ export interface SidcFields {
 }
 
 export class SidcError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "SidcError";
   }
 }
 
 /** Thrown when a field value is not a valid code. */
 export class SidcValidationError extends SidcError {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "SidcValidationError";
   }
 }
 
 /** Thrown in strict mode when field values conflict with each other. */
 export class SidcCombinationError extends SidcError {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "SidcCombinationError";
   }
 }
@@ -117,6 +117,23 @@ const SYMBOL_SET_NAMES: Readonly<Partial<Record<string, string>>> = {
   [SymbolSet.Cyberspace]: "cyberspace",
 };
 
+// `satisfies` makes a field added to `SidcFields` but missing here a compile error.
+const FIELD_KEYS = {
+  version: true,
+  context: true,
+  identity: true,
+  symbolSet: true,
+  status: true,
+  hqTaskForceDummy: true,
+  amplifier: true,
+  entity: true,
+  modifier1: true,
+  modifier2: true,
+  extension: true,
+  standard: true,
+} as const satisfies Record<keyof SidcFields, true>;
+const KNOWN_FIELD_KEYS: ReadonlySet<string> = new Set(Object.keys(FIELD_KEYS));
+
 const KNOWN_EXTENSION_KEYS: ReadonlySet<string> = new Set([
   "modifier1Extension",
   "modifier2Extension",
@@ -178,6 +195,35 @@ export function checkFrameShape(value: string): void {
   }
 }
 
+/**
+ * `true` when the nearest object owning `key` on the record's prototype chain
+ * is `Object.prototype`, i.e. the key exists only because of an enumerable
+ * addition there (a polyfill or pollution). Such keys are neither checked nor
+ * read; keys owned by the record or its own custom prototype are.
+ */
+function isGlobalPrototypeKey(record: object, key: string): boolean {
+  let owner: object | null = record;
+  while (owner !== null && !Object.prototype.hasOwnProperty.call(owner, key)) {
+    owner = Object.getPrototypeOf(owner) as object | null;
+  }
+  return owner === Object.prototype;
+}
+
+/**
+ * @internal Every key/value a field record provides: own and custom-prototype
+ * enumerable keys, excluding `Object.prototype` additions. Values may be
+ * `undefined`.
+ */
+export function recordEntries(record: object): [string, unknown][] {
+  const entries: [string, unknown][] = [];
+  for (const key in record) {
+    if (!isGlobalPrototypeKey(record, key)) {
+      entries.push([key, (record as Record<string, unknown>)[key]]);
+    }
+  }
+  return entries;
+}
+
 /** @internal Copies, defaults, validates, and freezes an optional tail. */
 export function normalizeExtension(
   value: Partial<SidcExtension> | undefined,
@@ -186,18 +232,27 @@ export function normalizeExtension(
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new SidcValidationError("Extension must be a field record.");
   }
-  for (const key in value) {
+  // Null prototype: absent members read as undefined, never as pollution.
+  const provided = Object.create(null) as Partial<SidcExtension>;
+  for (const [key, member] of recordEntries(value)) {
     if (!KNOWN_EXTENSION_KEYS.has(key)) {
       throw new SidcValidationError(`Unknown extension field "${key}".`);
     }
+    (provided as Record<string, unknown>)[key] = member;
   }
   const extension = {
     modifier1Extension:
-      value.modifier1Extension === undefined ? "0" : value.modifier1Extension,
+      provided.modifier1Extension === undefined
+        ? "0"
+        : provided.modifier1Extension,
     modifier2Extension:
-      value.modifier2Extension === undefined ? "0" : value.modifier2Extension,
+      provided.modifier2Extension === undefined
+        ? "0"
+        : provided.modifier2Extension,
     frameShape:
-      value.frameShape === undefined ? FrameShape.Default : value.frameShape,
+      provided.frameShape === undefined
+        ? FrameShape.Default
+        : provided.frameShape,
   };
   checkOneDigitField("Modifier 1 extension", extension.modifier1Extension);
   checkOneDigitField("Modifier 2 extension", extension.modifier2Extension);
@@ -236,7 +291,9 @@ export function checkAmplifier(value: string): void {
 /** @internal Validates a standard-family value. */
 export function checkStandard(standard: string): void {
   if (!KNOWN_STANDARDS.includes(standard)) {
-    throw new SidcValidationError(`Unknown standard "${standard}".`);
+    throw new SidcValidationError(
+      `Unknown standard ${describeValue(standard)}.`,
+    );
   }
 }
 
@@ -262,6 +319,21 @@ export function checkStatus(value: string): void {
   if (!KNOWN_STATUSES.includes(value)) {
     throw new SidcValidationError(`Unknown status code "${value}".`);
   }
+}
+
+/**
+ * @internal Keys of a field record that are not `SidcFields` members, using
+ * the same rule as extension records (see {@link recordEntries}).
+ */
+export function unknownFieldKeys(fields: object): string[] {
+  return recordEntries(fields)
+    .map(([key]) => key)
+    .filter((key) => !KNOWN_FIELD_KEYS.has(key));
+}
+
+/** @internal `true` for a `SidcFields` member name. */
+export function isFieldKey(key: string): key is keyof SidcFields {
+  return KNOWN_FIELD_KEYS.has(key);
 }
 
 /** Fields after constructor normalization: complete, frozen extension tail. */
@@ -377,18 +449,22 @@ function combinationProblems(fields: SidcFields): SidcProblem[] {
     });
   }
 
+  // milsymbol honors the no-frame selector "A" in every edition; only the
+  // extended modifier digits and frame shapes 1-9 are E-edition features.
   const extension = fields.extension;
+  const frameShape = extension?.frameShape ?? FrameShape.Default;
   if (
     ["10", "11", "12"].includes(version) &&
     extension !== undefined &&
     ((extension.modifier1Extension ?? "0") !== "0" ||
       (extension.modifier2Extension ?? "0") !== "0" ||
-      (extension.frameShape ?? "0") !== "0")
+      (frameShape !== FrameShape.Default && frameShape !== FrameShape.NoFrame))
   ) {
     problems.push({
       code: "unsupported-extension-edition",
       message:
-        `Non-default SIDC extensions are supported only for E editions; ` +
+        `Extended modifier digits and frame shapes 1-9 are supported only ` +
+        `for E editions; ` +
         `version "${version}" is a D edition.`,
     });
   }

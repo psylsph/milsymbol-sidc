@@ -243,7 +243,7 @@ describe("SIDC extensions", () => {
         base.extendedModifier1("100"),
         base.extendedModifier2("100"),
         base.frameShape(FrameShape.Air),
-        base.frameShape(FrameShape.NoFrame),
+        base.extendedModifier1("100").frameShape(FrameShape.NoFrame),
       ]) {
         assert.deepEqual(
           value.problems().map((p) => p.code),
@@ -263,6 +263,8 @@ describe("SIDC extensions", () => {
       assert.ok(warnings.length > 0);
       assert.deepEqual(base.with({ extension: {} }).problems(), []);
       assert.deepEqual(base.extendedModifier1("005").problems(), []);
+      // milsymbol suppresses the frame for "A" in every edition.
+      assert.deepEqual(base.frameShape(FrameShape.NoFrame).problems(), []);
     }
   });
 

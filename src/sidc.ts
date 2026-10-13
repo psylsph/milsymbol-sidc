@@ -23,9 +23,12 @@ import {
   checkThreeDigitField,
   collectProblems,
   defaultVersionForStandard,
+  isFieldKey,
+  recordEntries,
   SidcCombinationError,
   SidcValidationError,
   standardForVersion,
+  unknownFieldKeys,
   type NormalizedSidcFields,
   type SidcExtension,
   type SidcFields,
@@ -37,6 +40,10 @@ export interface SidcOptions {
    * Throw {@link SidcCombinationError} on invalid field combinations during
    * {@link Sidc.toString} instead of emitting console warnings.
    * Invalid individual values always throw immediately.
+   *
+   * Also rejects unknown field-record keys passed to the constructor or
+   * {@link Sidc.with} (for example a misspelled `entitty`) with
+   * {@link SidcValidationError}. Without `strict`, unknown keys are ignored.
    */
   strict?: boolean;
 
@@ -81,16 +88,26 @@ export interface SidcSnapshot {
 /** 20 ASCII digits, optionally followed by two digits and a frame selector. */
 const SIDC_PATTERN = /^\d{20}(?:\d{2}[0-9A])?$/;
 
-/** Drops explicitly-undefined entries so omitted and undefined values both default. */
-function dropUndefined(
+/**
+ * Keeps known, defined entries so omitted and undefined values both default
+ * and unknown keys never reach the stored fields. Reads the same keys the
+ * strict-mode check sees (own and custom-prototype, see `recordEntries`).
+ */
+function knownDefinedFields(
   fields: Partial<SidcFields> | null | undefined,
 ): Partial<SidcFields> {
   if (fields == null) {
-    return {};
+    return Object.create(null) as Partial<SidcFields>;
   }
-  return Object.fromEntries(
-    Object.entries(fields).filter(([, value]) => value !== undefined),
-  ) as Partial<SidcFields>;
+  // Null prototype: absent fields read as undefined, never as pollution.
+  return Object.assign(
+    Object.create(null) as Partial<SidcFields>,
+    Object.fromEntries(
+      recordEntries(fields).filter(
+        ([key, value]) => isFieldKey(key) && value !== undefined,
+      ),
+    ),
+  );
 }
 
 /**
@@ -124,12 +141,22 @@ export class Sidc {
    * explicitly-undefined values are normalized to their zero defaults. Every
    * supplied value is validated, so this path cannot produce a malformed SIDC.
    */
-  constructor(options: SidcOptions = {}, fields?: Partial<SidcFields> | null) {
+  constructor(
+    options: SidcOptions | null = {},
+    fields?: Partial<SidcFields> | null,
+  ) {
+    options ??= {};
     if (options.standard !== undefined) {
       checkStandard(options.standard);
     }
 
-    const provided = dropUndefined(fields);
+    if (options.strict) {
+      // Checked before undefined values are dropped, so a misspelled key is
+      // caught even when its value happens to be undefined.
+      assertKnownFields(fields);
+    }
+
+    const provided = knownDefinedFields(fields);
     const standard = provided.standard ?? options.standard;
 
     this.fields = Object.freeze(
@@ -147,12 +174,15 @@ export class Sidc {
         entity: "000000",
         modifier1: "00",
         modifier2: "00",
+        // Explicit own key, so an absent tail can never be read from a
+        // polluted Object.prototype.
+        extension: undefined,
         standard,
         ...provided,
       }),
     );
 
-    this.strict = options.strict ?? false;
+    this.strict = Boolean(options.strict);
     this.onWarning = options.onWarning;
   }
 
@@ -417,9 +447,13 @@ export class Sidc {
    * Every supplied value is validated; undefined extension removes the tail.
    */
   with(fields: Partial<SidcFields>): Sidc {
+    // Copy every provided key (including custom-prototype and unknown ones,
+    // which a spread would drop) so the constructor checks them exactly once.
+    const patch =
+      fields == null ? {} : Object.fromEntries(recordEntries(fields));
     return new Sidc(
       { strict: this.strict, onWarning: this.onWarning },
-      { ...this.fields, ...fields },
+      { ...this.fields, ...patch },
     );
   }
 
@@ -428,52 +462,102 @@ export class Sidc {
    *
    * @throws {SidcValidationError} when shape or field values are invalid.
    * Only position 23 may contain `A`; all other characters must be ASCII digits.
+   * When a well-formed SIDC holds an unknown code, the message names the field
+   * and the field error is the `cause`. An invalid `options.standard` is
+   * reported as-is, not as a SIDC problem.
    */
-  static parse(sidc: string, options: SidcOptions = {}): Sidc {
-    const parsed = Sidc.tryParse(sidc, options);
-    if (parsed === undefined) {
+  static parse(sidc: string, options: SidcOptions | null = {}): Sidc {
+    if (typeof sidc !== "string") {
       throw new SidcValidationError(
-        `Invalid 20- or 23-character SIDC ${JSON.stringify(sidc)}.`,
+        "Invalid 20- or 23-character SIDC: expected a string, got " +
+          `${sidc === null ? "null" : typeof sidc}.`,
       );
     }
-    return parsed;
+    const invalid = `Invalid 20- or 23-character SIDC ${JSON.stringify(sidc)}.`;
+    if (!isSidcShape(sidc)) {
+      throw new SidcValidationError(invalid);
+    }
+    // The constructor checks this too, but checking first keeps an invalid
+    // option from being reported as a problem with the SIDC below.
+    let standard: Standard | undefined;
+    try {
+      standard = options?.standard;
+    } catch (error) {
+      throw new SidcValidationError("Invalid SIDC options.", { cause: error });
+    }
+    if (standard !== undefined) {
+      checkStandard(standard);
+    }
+    try {
+      return new Sidc(options, fieldsFromSidc(sidc));
+    } catch (error) {
+      // Always a SidcValidationError, even for unexpected option failures.
+      throw new SidcValidationError(
+        error instanceof SidcValidationError
+          ? `${invalid} ${error.message}`
+          : invalid,
+        { cause: error },
+      );
+    }
   }
 
   /**
    * Parses a supported 20- or 23-character SIDC, returning `undefined` for
    * malformed input instead of throwing. Combination problems remain inspectable.
    */
-  static tryParse(sidc: string, options: SidcOptions = {}): Sidc | undefined {
-    if (
-      typeof sidc !== "string" ||
-      (sidc.length !== 20 && sidc.length !== 23) ||
-      !SIDC_PATTERN.test(sidc)
-    ) {
+  static tryParse(
+    sidc: string,
+    options: SidcOptions | null = {},
+  ): Sidc | undefined {
+    // A cheap shape check first, so bulk-checking bad strings costs no
+    // exceptions; never throws, whatever the input or options.
+    if (typeof sidc !== "string" || !isSidcShape(sidc)) {
       return undefined;
     }
     try {
-      return new Sidc(options, {
-        version: sidc.slice(0, 2),
-        context: sidc.slice(2, 3),
-        identity: sidc.slice(3, 4),
-        symbolSet: sidc.slice(4, 6),
-        status: sidc.slice(6, 7),
-        hqTaskForceDummy: sidc.slice(7, 8),
-        amplifier: sidc.slice(8, 10),
-        entity: sidc.slice(10, 16),
-        modifier1: sidc.slice(16, 18),
-        modifier2: sidc.slice(18, 20),
-        extension:
-          sidc.length === 23
-            ? {
-                modifier1Extension: sidc.slice(20, 21),
-                modifier2Extension: sidc.slice(21, 22),
-                frameShape: sidc.slice(22, 23) as FrameShape,
-              }
-            : undefined,
-      });
+      return new Sidc(options, fieldsFromSidc(sidc));
     } catch {
       return undefined;
     }
   }
+}
+
+/** Throws for the first key of a field record that is not a `SidcFields` member. */
+function assertKnownFields(
+  fields: Partial<SidcFields> | null | undefined,
+): void {
+  if (fields == null) return;
+  const [unknown] = unknownFieldKeys(fields);
+  if (unknown !== undefined) {
+    throw new SidcValidationError(`Unknown field "${unknown}".`);
+  }
+}
+
+/** The anchored pattern alone admits exactly the 20- and 23-character forms. */
+function isSidcShape(sidc: string): boolean {
+  return SIDC_PATTERN.test(sidc);
+}
+
+/** Splits a shape-checked SIDC string into its raw field values. */
+function fieldsFromSidc(sidc: string): SidcFields {
+  return {
+    version: sidc.slice(0, 2),
+    context: sidc.slice(2, 3),
+    identity: sidc.slice(3, 4),
+    symbolSet: sidc.slice(4, 6),
+    status: sidc.slice(6, 7),
+    hqTaskForceDummy: sidc.slice(7, 8),
+    amplifier: sidc.slice(8, 10),
+    entity: sidc.slice(10, 16),
+    modifier1: sidc.slice(16, 18),
+    modifier2: sidc.slice(18, 20),
+    extension:
+      sidc.length === 23
+        ? {
+            modifier1Extension: sidc.slice(20, 21),
+            modifier2Extension: sidc.slice(21, 22),
+            frameShape: sidc.slice(22, 23) as FrameShape,
+          }
+        : undefined,
+  };
 }

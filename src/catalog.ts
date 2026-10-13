@@ -43,7 +43,10 @@ function codesFor(
   table: Readonly<Record<string, readonly string[]>>,
   symbolSet: string,
 ): readonly string[] {
-  return table[symbolSet] ?? EMPTY;
+  // Own-property lookup so keys like "constructor" or "__proto__" miss cleanly.
+  return Object.prototype.hasOwnProperty.call(table, symbolSet)
+    ? table[symbolSet]!
+    : EMPTY;
 }
 
 /** Every symbol set the catalog covers, sorted ascending. */

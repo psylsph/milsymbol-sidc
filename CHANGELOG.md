@@ -11,8 +11,78 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Breaking
+
+- **Strict mode only:** `strict: true` now also rejects unrecognized
+  field-record keys passed to the constructor or `with()`, throwing
+  `SidcValidationError` (`Unknown field "…"`). A strict builder fed records
+  that carry extra data, such as `with({ ...row })` where `row` has an `id`,
+  worked in 0.5.0 and now throws; strip the extra keys first. Typos such as
+  `with({ entitty: "123456" })` are caught even when the value is `undefined`.
+  Builders without `strict` are unaffected: unknown keys are still accepted,
+  and are now discarded instead of being stored and carried into later
+  builders. Any truthy `strict` value enables the check on every path.
+
+### Changed
+
+- Field records are read the same way at the top level and in `extension`:
+  own and custom-prototype keys count (so `Object.create({ entity: "…" })`
+  now sets the entity instead of being silently ignored), while keys that
+  exist only on `Object.prototype` are neither checked nor read.
+- `Sidc.parse()` error messages now name the offending field: a well-formed
+  SIDC with an unknown code throws
+  `Invalid 20- or 23-character SIDC "…". Unknown amplifier code "99".`, and the
+  original field error is attached as `cause`. The message still starts with
+  the previous text. Non-string input now reports its type
+  (`Invalid 20- or 23-character SIDC: expected a string, got bigint.`), and an
+  invalid `options.standard` throws its own `Unknown standard "…"` error
+  instead of blaming the SIDC. `parse()` throws only `SidcValidationError`;
+  an unexpected failure while reading options is wrapped, with the original
+  error as `cause`.
+- `null` options are accepted by the constructor, `parse()`, and `tryParse()`
+  and mean "use the defaults", like omitting them.
+- `unsupported-extension-edition` is no longer reported for frame shape
+  `NoFrame` (`A`) on D editions: milsymbol suppresses the frame for `A` in
+  every edition. Extended modifier digits and frame shapes `1`–`9` on D
+  editions still warn, and the message now says exactly that:
+  `Extended modifier digits and frame shapes 1-9 are supported only for E
+  editions; version "…" is a D edition.` (previously
+  `Non-default SIDC extensions are supported only for E editions; …`).
+- `SidcError`, `SidcValidationError`, and `SidcCombinationError` accept an
+  optional standard `ErrorOptions` second argument (for `cause`).
+
+### Added
+
+- README: a "Working with MIL-STD-2525D" section with runnable, test-checked
+  examples, and notes on how D-edition reports relate to milsymbol rendering.
+  `test/milsymbol.test.ts` verifies the 2525D behavior against milsymbol.
+
 ### Fixed
 
+- Catalogs: symbol set `25` (control measures) now lists its 270 entity codes.
+  The generator expected milsymbol's entity map to be named `sId`, but
+  `control-measure.js` names it `sidc`, so the set had no entity codes at all.
+  Map names are now read from each module's `icons()` signature.
+- Catalogs: codes inside commented-out milsymbol source are no longer
+  harvested. This removes 57 phantom dismounted-individual entity codes
+  (`110317`–`110364`, `110404`–`110412`), modifier 1 `56` for set `27`, and
+  modifier 1 `01` for set `36`.
+- Catalogs: codes milsymbol reports as invalid are excluded. The generator
+  renders every entity, modifier, and extended modifier code and keeps it when
+  any edition/standard combination is valid; this currently drops the
+  placeholder `icn["TODO"]` entities `200600`, `200700`, and `280100` in set
+  `25`. Empty-icon registrations such as `sIdm1["11"] = []` are kept, since
+  milsymbol accepts them. Symbol sets left with no codes are omitted. A new
+  test checks the catalog against milsymbol with the same rule.
+- Enumerable properties added to `Object.prototype` (by a polyfill or
+  prototype pollution) no longer affect builders: they are not rejected as
+  unknown extension keys, and a polluted known name such as `frameShape` or
+  `extension` is no longer read as a field value.
+- Catalogs: lookups such as `isKnownEntityCode("constructor", …)` or
+  `entityCodes("__proto__")` no longer throw or return non-array values;
+  `Object.prototype` keys are treated as unknown symbol sets.
+- Non-string `standard` values (for example a `Symbol`) now throw
+  `SidcValidationError` instead of a `TypeError` from string conversion.
 - README: removed duplicated modifier 1 / modifier 2 rows from the SIDC
   position table (the surviving rows already documented both the raw and
   extended setter forms).
@@ -21,6 +91,19 @@ release is cut (see `AGENTS.md` → Releasing).
 
 ### Tooling
 
+- `publish.yml` now also mirrors each release to GitHub Packages as
+  `@psylsph/milsymbol-sidc`, in a separate job after the npm publish, so the
+  package is listed on the repository page. npm (unscoped `milsymbol-sidc`)
+  remains the primary registry.
+- The catalog render rule lives in `scripts/catalog-render-rule.mjs`, shared
+  by the generator and `test/milsymbol.test.ts`, so the two cannot drift. The
+  generator also fails on an unguarded module that registers entities.
+- `generate:catalogs` now parses milsymbol's modules with
+  [acorn](https://github.com/acornjs/acorn) (new devDependency) instead of
+  regex-scanning source text. Comments can no longer be harvested, map names
+  come from each module's real `icons()` parameters, chained assignments are
+  handled, and a module with symbol-set guards but no recognized entity
+  registrations fails the build instead of silently producing an empty set.
 - README TypeScript examples are now executed by the test suite
   (`test/readme-examples.test.ts`): every trailing `// "..."` / `// true` /
   `// false` / `// undefined` comment is compared against the real library, so

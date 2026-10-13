@@ -496,6 +496,126 @@ describe("immutability", () => {
 });
 
 describe("value validation", () => {
+  it("rejects non-string standards with a validation error", () => {
+    for (const standard of [Symbol("x"), 2525, null]) {
+      assert.throws(
+        () => new Sidc({ standard: standard as never }),
+        SidcValidationError,
+      );
+      assert.throws(
+        () => new Sidc().with({ standard: standard as never }),
+        SidcValidationError,
+      );
+    }
+  });
+
+  it("rejects unknown field keys in strict mode", () => {
+    const strict = new Sidc({ strict: true });
+    assert.throws(() => strict.with({ entitty: "123456" } as never), {
+      name: "SidcValidationError",
+      message: 'Unknown field "entitty".',
+    });
+    // Caught even when the misspelled key's value is undefined.
+    assert.throws(
+      () => strict.with({ entitty: undefined } as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc({ strict: true }, { symbolset: "10" } as never),
+      SidcValidationError,
+    );
+    assert.equal(
+      strict.with({ entity: "123456" }).toString(),
+      "13010000001234560000",
+    );
+  });
+
+  it("ignores and discards unknown field keys outside strict mode", () => {
+    const value = new Sidc().with({ id: 7, entity: "123456" } as never);
+    assert.equal(value.toString(), "13010000001234560000");
+    assert.equal("id" in value.toObject(), false);
+    // Not carried forward into later strict builders either.
+    const strict = new Sidc({ strict: true }, value.toObject());
+    assert.equal(strict.equals(value), true);
+  });
+
+  it("checks custom-prototype keys the same way at both levels", () => {
+    const strict = new Sidc({ strict: true });
+    assert.throws(
+      () => strict.with(Object.create({ entitty: "123456" }) as never),
+      { name: "SidcValidationError", message: 'Unknown field "entitty".' },
+    );
+    assert.throws(
+      () => strict.with({ extension: Object.create({ bogus: "1" }) }),
+      SidcValidationError,
+    );
+  });
+
+  it("reads known keys inherited from a custom prototype", () => {
+    for (const strict of [true, false]) {
+      const inherited = Object.create({ entity: "123456" }) as never;
+      assert.equal(
+        new Sidc({ strict }).with(inherited).toString(),
+        "13010000001234560000",
+      );
+      assert.equal(
+        new Sidc({ strict }, inherited).toString(),
+        "13010000001234560000",
+      );
+    }
+  });
+
+  it("applies strict mode for any truthy flag, on every path", () => {
+    const loose = { strict: 1 } as never;
+    assert.throws(
+      () => new Sidc(loose, { entitty: "1" } as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc(loose).with({ entitty: "1" } as never),
+      SidcValidationError,
+    );
+    assert.throws(
+      () => new Sidc(loose).symbolSet("99").toString(),
+      SidcCombinationError,
+    );
+  });
+
+  it("ignores inherited enumerable keys", () => {
+    const proto = Object.prototype as Record<string, unknown>;
+    proto.polluted = "x";
+    try {
+      assert.equal(
+        new Sidc({ strict: true }).entity("123456").toString(),
+        "13010000001234560000",
+      );
+      assert.equal(
+        new Sidc({ strict: true }).extendedModifier1("100").toString().length,
+        23,
+      );
+    } finally {
+      delete proto.polluted;
+    }
+    // A polluted known key must not be read as a field value either.
+    for (const [key, value] of [
+      ["frameShape", "2"],
+      ["modifier2Extension", "9"],
+      ["entity", "123456"],
+      ["extension", { frameShape: "2" }],
+    ] as const) {
+      proto[key] = value;
+      try {
+        assert.equal(
+          new Sidc().extendedModifier1("100").toString(),
+          "13010000000000000000100",
+        );
+        assert.equal(new Sidc().toString(), "13010000000000000000");
+      } finally {
+        delete proto[key];
+      }
+    }
+  });
+
   it("throws on malformed or unknown codes", () => {
     assert.throws(() => new Sidc().version("9X"), SidcValidationError);
     assert.throws(() => new Sidc().version("1"), SidcValidationError);
@@ -997,6 +1117,83 @@ describe("parsing", () => {
       () => Sidc.parse("13901000000000000000"),
       SidcValidationError,
     );
+  });
+
+  it("names the offending field when a well-formed SIDC is rejected", () => {
+    assert.throws(
+      () => Sidc.parse("13031000990000000000"),
+      (error: unknown) => {
+        assert.ok(error instanceof SidcValidationError);
+        assert.equal(
+          error.message,
+          'Invalid 20- or 23-character SIDC "13031000990000000000". ' +
+            'Unknown amplifier code "99".',
+        );
+        assert.ok(error.cause instanceof SidcValidationError);
+        assert.equal(error.cause.message, 'Unknown amplifier code "99".');
+        return true;
+      },
+    );
+  });
+
+  it("reports an invalid standard option rather than blaming the SIDC", () => {
+    assert.throws(
+      () => Sidc.parse("13031000000000000000", { standard: "bogus" as never }),
+      { name: "SidcValidationError", message: 'Unknown standard "bogus".' },
+    );
+    assert.equal(
+      Sidc.tryParse("13031000000000000000", { standard: "bogus" as never }),
+      undefined,
+    );
+  });
+
+  it("never throws from tryParse, whatever the options", () => {
+    const valid = "13031000000000000000";
+    // null options mean "use the defaults", like omitting them.
+    assert.equal(Sidc.tryParse(valid, null)?.toString(), valid);
+    assert.equal(Sidc.parse(valid, null).toString(), valid);
+    assert.equal(new Sidc(null).toString(), "13010000000000000000");
+    const hostile = {
+      get standard(): never {
+        throw new Error("boom");
+      },
+    };
+    assert.equal(Sidc.tryParse(valid, hostile as never), undefined);
+    assert.equal(Sidc.tryParse(valid)?.toString(), valid);
+  });
+
+  it("only ever throws SidcValidationError from parse", () => {
+    const hostile = {
+      get standard(): never {
+        throw new Error("boom");
+      },
+    };
+    assert.throws(
+      () => Sidc.parse("13031000000000000000", hostile as never),
+      (error: unknown) => {
+        assert.ok(error instanceof SidcValidationError);
+        assert.ok(error.cause instanceof Error);
+        assert.equal(error.cause.message, "boom");
+        return true;
+      },
+    );
+  });
+
+  it("reports the type of non-string input", () => {
+    for (const [value, type] of [
+      [Symbol("x"), "symbol"],
+      [10n, "bigint"],
+      [10, "number"],
+      [undefined, "undefined"],
+      [null, "null"],
+      [Object.create(null), "object"],
+    ] as const) {
+      assert.throws(() => Sidc.parse(value as never), {
+        name: "SidcValidationError",
+        message: `Invalid 20- or 23-character SIDC: expected a string, got ${type}.`,
+      });
+      assert.equal(Sidc.tryParse(value as never), undefined);
+    }
   });
 
   it("carries options into the parsed builder", () => {
