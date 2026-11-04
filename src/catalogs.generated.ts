@@ -1,7 +1,7 @@
 /**
  * GENERATED FILE - do not edit by hand.
  *
- * Membership catalog derived from milsymbol 3.0.4 (MIT),
+ * Membership catalog derived from milsymbol 3.0.5 (MIT),
  * Copyright (c) 2017 Måns Beckman - https://www.spatialillusions.com
  *
  * Regenerate with `npm run generate:catalogs`.
@@ -10,7 +10,7 @@
 /** Package and version the catalog was generated from. */
 export const CATALOG_SOURCE = {
   name: "milsymbol",
-  version: "3.0.4",
+  version: "3.0.5",
 } as const;
 
 /** Six-digit entity codes milsymbol registers, keyed by symbol set. */
