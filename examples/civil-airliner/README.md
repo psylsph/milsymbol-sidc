@@ -27,12 +27,29 @@ unknown yellow, suspect and hostile red. Setting the civilian fixed-wing entity
 neutral to milsymbol's civilian magenta instead; pass milsymbol's
 `civilianColor: false` option to keep identity colours with that entity.
 
+## Starting from MIL-STD-2525C
+
+Older systems often carry 2525C codes, where a civil fixed-wing aircraft is
+function ID `CF` in the air battle dimension. The builder's `from2525c()` uses
+the current symbol set (`Air`) as the dimension and sets the 2525D entity:
+
+```js
+airliner.from2525c("CF").modifier1(Air.Modifier1.Passenger).toString();
+// "10040100001201000900"
+```
+
+`from2525c()` replaces both modifiers, so set passenger afterwards. Both
+samples use it: the page has a "Start from a MIL-STD-2525C function ID" field
+(try `C`, `CH`, or `CL`), and `render.mjs` writes an extra
+`airliner-from-2525c.svg`. Identity and status still come from the builder.
+
 ## Browser (`index.html`)
 
-An interactive page: pick the identity and toggle "heavy" or "hijacking" to
-see the SIDC, its breakdown, and the rendered symbol update. It loads both
-libraries from the jsDelivr CDN, so it needs no build step, but browsers block
-ES modules from `file://` pages; serve the folder over HTTP instead:
+An interactive page: pick the identity, toggle "heavy" or "hijacking", or enter
+a 2525C function ID to see the SIDC, its breakdown, and the rendered symbol
+update. It loads both libraries from the jsDelivr CDN (`milsymbol-sidc@0.8.0`,
+the first release with `from2525c()`), so it needs no build step, but browsers
+block ES modules from `file://` pages; serve the folder over HTTP instead:
 
 ```bash
 npx --yes serve examples/civil-airliner
@@ -41,8 +58,8 @@ npx --yes serve examples/civil-airliner
 
 ## Node (`render.mjs`)
 
-Writes `airliner.svg`, `airliner-heavy.svg`, and `airliner-hijacked.svg` next
-to the script. From the repository root:
+Writes `airliner.svg`, `airliner-heavy.svg`, `airliner-hijacked.svg`, and
+`airliner-from-2525c.svg` next to the script. From the repository root:
 
 ```bash
 npm run build

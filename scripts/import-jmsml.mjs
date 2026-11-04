@@ -125,6 +125,123 @@ const named = (element, code, extra = {}) => {
   return { code, label, ...(alias ? { alias } : {}), ...extra };
 };
 
+/**
+ * Upstream ID typos in `<LegacySymbol>` references, mapped to the ID the
+ * referenced element actually has.
+ */
+const LEGACY_ID_FIXES = {
+  FEDERAL_BUREAU_NVESTIGATION_FBI: "FEDERAL_BUREAU_INVESTIGATION_FBI",
+};
+
+/**
+ * MIL-STD-2525C (and 2525B change 2) symbols mapped to this symbol set. Each
+ * `<LegacySymbol>` Label is the full 15-character letter SIDC pattern (`*`
+ * marks a free position); its ID references are resolved to the six-digit
+ * entity and two-digit modifier codes. Symbols with no 2525D equivalent (no
+ * entity reference, usually retired) are left out.
+ */
+function legacySymbols(set, file) {
+  const fix = (id) => LEGACY_ID_FIXES[id] ?? id;
+  const entities = new Map();
+  for (const entity of children(set, "Entities")) {
+    const types = new Map();
+    for (const type of children(entity, "EntityTypes")) {
+      const subtypes = new Map(
+        children(type, "EntitySubTypes").map((subtype) => [
+          subtype.attributes.ID,
+          digits(subtype, "EntitySubTypeCode"),
+        ]),
+      );
+      types.set(type.attributes.ID, {
+        code: digits(type, "EntityTypeCode"),
+        subtypes,
+      });
+    }
+    entities.set(entity.attributes.ID, {
+      code: digits(entity, "EntityCode"),
+      types,
+    });
+  }
+  const specialSubtypes = new Map(
+    children(set, "SpecialEntitySubTypes").map((subtype) => [
+      subtype.attributes.ID,
+      digits(subtype, "EntitySubTypeCode"),
+    ]),
+  );
+  const modifiers = (sector) =>
+    new Map(
+      children(set, sector).map((modifier) => [
+        modifier.attributes.ID,
+        digits(modifier, "ModifierCode"),
+      ]),
+    );
+  const modifier1 = modifiers("SectorOneModifiers");
+  const modifier2 = modifiers("SectorTwoModifiers");
+  const resolve = (map, id, what, symbol) => {
+    const code = map?.get(fix(id));
+    if (code === undefined) {
+      throw new Error(`${file}: ${symbol} references unknown ${what} ${id}`);
+    }
+    return code;
+  };
+
+  const legacy = [];
+  for (const symbol of children(set, "LegacySymbols")) {
+    const {
+      ID: id,
+      Label: pattern,
+      EntityID: entityId,
+      EntityTypeID: typeId,
+      EntitySubTypeID: subtypeId,
+      ModifierOneID: modifierOneId,
+      ModifierTwoID: modifierTwoId,
+      IsDuplicate: isDuplicate,
+    } = symbol.attributes;
+    if (!/^[A-Z*][A-Z*-][A-Z][A-Z*-][A-Z0-9-]{6}[A-Z*-]{5}$/.test(pattern)) {
+      throw new Error(`${file}: ${id} has bad legacy pattern ${pattern}`);
+    }
+    if (entityId === undefined) continue;
+    const entity = entities.get(fix(entityId));
+    if (entity === undefined) {
+      throw new Error(`${file}: ${id} references unknown entity ${entityId}`);
+    }
+    const type =
+      typeId === undefined ? undefined : entity.types.get(fix(typeId));
+    if (typeId !== undefined && type === undefined) {
+      throw new Error(`${file}: ${id} references unknown type ${typeId}`);
+    }
+    const subtype =
+      subtypeId === undefined
+        ? "00"
+        : (type?.subtypes.get(fix(subtypeId)) ??
+          resolve(specialSubtypes, subtypeId, "subtype", id));
+    // A symbol is 2525B change 2 only when none of its codes is for 2525C.
+    const codes = symbol.children.filter(
+      (node) => node.name === "LegacyFunctionCode",
+    );
+    const bc2Only = codes.every(
+      (code) =>
+        code.attributes.Name?.toUpperCase() !== "2525C" ||
+        code.attributes.LimitUseTo?.toUpperCase() === "2525BC2",
+    );
+    legacy.push({
+      pattern,
+      entity: `${entity.code}${type?.code ?? "00"}${subtype}`,
+      modifier1:
+        modifierOneId === undefined
+          ? "00"
+          : resolve(modifier1, modifierOneId, "modifier 1", id),
+      modifier2:
+        modifierTwoId === undefined
+          ? "00"
+          : resolve(modifier2, modifierTwoId, "modifier 2", id),
+      ...(isDuplicate === "true" ? { duplicate: true } : {}),
+      ...(bc2Only ? { bc2Only: true } : {}),
+    });
+  }
+  return legacy;
+}
+
 /** Normalizes one symbol-set document. */
 export function normalizeSymbolSet(document, file) {
   const set = child(document, "SymbolSet");
@@ -151,6 +268,7 @@ export function normalizeSymbolSet(document, file) {
     modifier2: children(set, "SectorTwoModifiers").map((modifier) =>
       named(modifier, digits(modifier, "ModifierCode")),
     ),
+    legacy2525c: legacySymbols(set, file),
   });
 }
 

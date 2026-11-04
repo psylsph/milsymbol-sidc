@@ -60,7 +60,7 @@ jobs:
         run: npm run generate:catalogs && git diff --exit-code -- src/catalogs.generated.ts
 
       - name: Check generated names are current
-        run: npm run generate:names && git diff --exit-code -- src/names-2525d.generated.ts
+        run: npm run generate:names && git diff --exit-code -- src/names-2525d.generated.ts src/legacy-2525c.generated.ts
 
       - name: Test with coverage
         run: node --test --experimental-test-coverage dist/test/*.test.js

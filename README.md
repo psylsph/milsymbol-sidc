@@ -181,6 +181,7 @@ All setters validate their argument and return a new immutable `Sidc`.
 | `entity(v)`                  | Positions 11–16                    | Any six-digit string; symbol-set-specific catalogs are not included                                                |
 | `modifier1(v)`               | Positions 17–18                    | Any two-digit string; resets the modifier-1 extension digit to `0` when a tail exists                              |
 | `modifier2(v)`               | Positions 19–20                    | Any two-digit string; resets the modifier-2 extension digit to `0` when a tail exists                              |
+| `from2525c(functionId)`      | Positions 5–6 + 11–20              | A MIL-STD-2525C warfighting function ID such as `"CF"`; the current symbol set picks the 2525C battle dimension   |
 | `extendedModifier1(v)`       | Positions 17–18 + 21               | Any three-digit string; hundreds digit lands at position 21                                                        |
 | `extendedModifier2(v)`       | Positions 19–20 + 22               | Any three-digit string; hundreds digit lands at position 22                                                        |
 | `frameShape(v)`              | Position 23                        | A `FrameShape` constant                                                                                            |
@@ -625,6 +626,102 @@ edition D. Each symbol set is its own export, so a bundle that imports only
 `Air` contains only the air names (`describe2525d()` references every set, so
 using it brings them all in). `describe2525d()` returns no names for edition E
 versions or three-digit extended modifiers. See `NOTICE` for attribution.
+
+## MIL-STD-2525C function IDs
+
+Legacy data often stores just the 2525C function ID, such as `CF` for a civil
+fixed-wing aircraft. `from2525c()` on the builder maps it to the 2525D entity
+and modifiers, using the builder's symbol set as the 2525C battle dimension and
+assuming the warfighting coding scheme (`S`):
+
+```ts
+import { Sidc, StandardIdentity, SymbolSet, Version } from "milsymbol-sidc";
+
+const civilAir = new Sidc()
+  .version(Version.MilStd2525D)
+  .identity(StandardIdentity.Neutral)
+  .symbolSet(SymbolSet.Air);
+
+civilAir.from2525c("C").toString(); // "10040100001200000000"
+civilAir.from2525c("CF").toString(); // "10040100001201000000"
+civilAir.from2525c("CH").toString(); // "10040100001202000000"
+civilAir.from2525c("CF").modifier1("09").toString(); // "10040100001201000900"
+civilAir.symbolSet(SymbolSet.LandUnit).from2525c("UCI").toString(); // "10041000001211000000"
+```
+
+| Symbol set                                               | 2525C battle dimension                         |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| `Air`, `AirMissile`                                      | `A` air                                        |
+| `LandUnit`                                               | `G` ground, then `F` special operations forces |
+| `LandCivilianUnit`, `LandEquipment`, `Installation`      | `G` ground                                     |
+| `SeaSurface`                                             | `S` sea surface                                |
+| `SeaSubsurface`, `MineWarfare`                           | `U` subsurface                                 |
+| `Space`, `SpaceMissile`                                  | `P` space                                      |
+| `Unknown`                                                | `Z` unknown                                    |
+
+- It sets the symbol set, entity, and both modifiers from the mapping,
+  replacing earlier values, so set other modifiers afterwards. Identity,
+  status, and the other fields are kept. The mapped symbol set can differ from
+  the one you set: all 2525C ground codes are found from any land set, and air
+  `W` (missile in flight) moves to `AirMissile`.
+- The codes are edition D's, so set `.version(Version.MilStd2525D)`.
+- It throws `SidcValidationError` for a malformed function ID, a symbol set
+  with no 2525C warfighting dimension (control measures, activities, signals
+  intelligence, cyberspace), or a function ID with no 2525D equivalent, such
+  as a retired symbol or a code from another dimension.
+- The method puts the mapping table (about 9 KB gzipped) in the main entry
+  point.
+
+### Full letter SIDCs
+
+For a whole letter SIDC, including the other coding schemes (tactical
+graphics `G`, emergency management `E`, signals intelligence `I`, stability
+operations `O`, weather `W`), the `milsymbol-sidc/2525c` subpath returns the
+2525D codes as data. Pass the full 15 characters or just the first 10:
+
+```ts
+import { Sidc, StandardIdentity, SymbolSet, Version } from "milsymbol-sidc";
+import { from2525c, from2525cFunction } from "milsymbol-sidc/2525c";
+
+// Civil aircraft: battle dimension A (air), function ID "C-----"
+from2525c("SFAPC-----*****")?.entity; // "120000"
+from2525c("SFAPCF----")?.entity; // "120100"
+from2525c("SFAPCF----")?.symbolSet; // "01"
+from2525c("SHGPUCI---")?.symbolSet; // "10"
+from2525c("SHAPMFCL--")?.modifier2; // "03"
+from2525c("SFAPCV----"); // undefined
+from2525cFunction("CF", SymbolSet.Air)?.entity; // "120100"
+
+const civil = from2525c("SNAPCF----");
+const civilSidc = new Sidc()
+  .version(Version.MilStd2525D)
+  .identity(StandardIdentity.Neutral)
+  .symbolSet(civil?.symbolSet ?? "00")
+  .entity(civil?.entity ?? "000000");
+
+civilSidc.toString(); // "10040100001201000000"
+```
+
+- The coding scheme (position 1), battle dimension (3), and function ID (5–10)
+  select the symbol. The same function letters mean different things in
+  different dimensions (`C` is civil in air but a combatant at sea), so a bare
+  function ID such as `"CF"` needs its dimension: use the builder's
+  `from2525c()` or `from2525cFunction(functionId, symbolSet)`, which return the
+  same mapping.
+- Affiliation, status, and positions 11–15 only pick between variants the
+  standard distinguishes, such as installations (`H` at position 11) or
+  hostile and planned control-measure lines. They are not converted: set
+  `identity()`, `status()`, and `amplifier()` yourself.
+- Some 2525C function IDs became a 2525D entity plus a modifier (fixed-wing
+  cargo, light → cargo with modifier 2 "Light"), which is why the result
+  includes `modifier1` and `modifier2`.
+- The result is `undefined` for malformed input and for symbols with no 2525D
+  equivalent, such as retired 2525C symbols.
+
+The mappings come from the legacy symbol tables of the same pinned JMSML commit
+as the 2525D names. Where JMSML lists more than one equivalent, the primary
+2525C mapping wins over duplicates and 2525B-only entries; 2525C "missile in
+flight" (`S*APW-----`) maps to the air missile set (`02`, `110000`).
 
 ## Catalogs (optional)
 

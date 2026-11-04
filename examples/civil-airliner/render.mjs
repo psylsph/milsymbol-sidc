@@ -22,10 +22,17 @@ const airliner = new Sidc({ standard: Standard.MilStd2525, strict: true })
   .symbolSet(Air)
   .modifier1(Air.Modifier1.Passenger);
 
+// Coming from MIL-STD-2525C? A civil fixed-wing aircraft there is function ID
+// "CF" in the air battle dimension. from2525c() reads the dimension from the
+// builder's symbol set (Air) and sets entity "120100" (civilian fixed wing).
+// It replaces the modifiers, so passenger is set again afterwards.
+const fromLegacy = airliner.from2525c("CF").modifier1(Air.Modifier1.Passenger);
+
 const variants = {
   airliner,
   "airliner-heavy": airliner.modifier2(Air.Modifier2.Heavy),
   "airliner-hijacked": airliner.modifier1(Air.Modifier1.Hijacking),
+  "airliner-from-2525c": fromLegacy,
 };
 
 let failed = false;
@@ -34,10 +41,17 @@ for (const [name, builder] of Object.entries(variants)) {
   const symbol = new ms.Symbol(sidc, { size: 60, standard: "2525" });
   const file = new URL(`${name}.svg`, import.meta.url);
   writeFileSync(file, symbol.asSVG());
-  const { modifier1, modifier2 } = describe2525d(builder);
+  const { entity, entityType, entitySubtype, modifier1, modifier2 } =
+    describe2525d(builder);
+  const labels = [
+    entity?.code === "000000"
+      ? undefined
+      : (entitySubtype ?? entityType ?? entity)?.label,
+    modifier1?.label,
+    modifier2?.code === "00" ? undefined : modifier2?.label,
+  ].filter(Boolean);
   console.log(
-    `${name.padEnd(18)} ${sidc}  valid=${symbol.isValid()}  ` +
-      `${modifier1?.label}${modifier2?.code === "00" ? "" : ` / ${modifier2?.label}`}`,
+    `${name.padEnd(20)} ${sidc}  valid=${symbol.isValid()}  ${labels.join(" / ")}`,
   );
   failed ||= !symbol.isValid();
 }

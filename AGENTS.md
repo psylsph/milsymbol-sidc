@@ -10,7 +10,7 @@ Fluent TypeScript builder for MIL-STD-2525E / APP-6 numeric (20-character) SIDC
 strings, intended for use with [milsymbol](https://github.com/spatialillusions/milsymbol).
 
 - Package: `milsymbol-sidc` (ESM, `"type": "module"`)
-- Source: `src/` (`sidc.ts`, `enums.ts`, `validate.ts`, `named-code.ts`, `catalog.ts`, `names-2525d.ts`, and the two `*.generated.ts` files)
+- Source: `src/` (`sidc.ts`, `enums.ts`, `validate.ts`, `named-code.ts`, `catalog.ts`, `names-2525d.ts`, `legacy-2525c.ts`, and the three `*.generated.ts` files)
 - Tests: `test/*.test.ts`, compiled and run from `dist/test/*.test.js`
 - Build: `tsc` → `dist/`; published files are limited to `dist/src`
 - Docs: `README.md` (user-facing), `docs/plans/` (historical plans — do not rewrite)
@@ -25,7 +25,7 @@ npm run lint               # eslint
 npm run format             # prettier --write
 npm run format:check       # prettier --check
 npm run generate:catalogs  # regenerate src/catalogs.generated.ts, then format it
-npm run generate:names     # regenerate src/names-2525d.generated.ts from data/jmsml-2525d.json
+npm run generate:names     # regenerate src/names-2525d.generated.ts and src/legacy-2525c.generated.ts from data/jmsml-2525d.json
 npm run import:jmsml       # (network, rare) re-snapshot the pinned JMSML commit
 ```
 
@@ -48,6 +48,11 @@ Run `npm run format` (or `npx prettier --write`) after editing `.ts`, `.json`, o
   `npm run generate:names`. Never hand-edit it; change names through
   `scripts/name-overrides.json`. Keep `NOTICE` and `data/JMSML-LICENSE.txt` in
   the published `files`. CI fails if it is stale.
+- `src/legacy-2525c.generated.ts` (the MIL-STD-2525C → 2525D table behind
+  `milsymbol-sidc/2525c`) comes from the same snapshot's `legacy2525c` arrays,
+  also via `npm run generate:names`. Never hand-edit it; resolve conflicting
+  upstream mappings with `LEGACY_PREFERENCES` in `scripts/generate-names.mjs`.
+  CI fails if it is stale.
 - `src/catalogs.generated.ts` is generated from the pinned `milsymbol` version.
   Never hand-edit it; run `npm run generate:catalogs`. CI fails if it is stale.
 - The `ts` code blocks in `README.md` are executed by
@@ -109,7 +114,7 @@ npm run format:check
 npx --yes markdownlint-cli@0.43.0 README.md docs/plans/*.md CHANGELOG.md AGENTS.md examples/civil-airliner/README.md
 npm run build
 npm run generate:catalogs && git diff --exit-code -- src/catalogs.generated.ts
-npm run generate:names && git diff --exit-code -- src/names-2525d.generated.ts
+npm run generate:names && git diff --exit-code -- src/names-2525d.generated.ts src/legacy-2525c.generated.ts
 node --test --experimental-test-coverage dist/test/*.test.js
 ```
 

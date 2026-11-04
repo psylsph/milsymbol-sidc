@@ -9,6 +9,7 @@ import {
   SymbolSet,
   Version,
 } from "./enums.js";
+import { DIMENSIONS_2525C, from2525cFunction } from "./legacy-2525c.js";
 import {
   isNamedCode,
   type NamedCode,
@@ -253,6 +254,57 @@ export class Sidc {
       type: entity.slice(2, 4),
       subtype: entity.slice(4, 6),
     };
+  }
+
+  /**
+   * Positions 5-6 and 11-20 from a MIL-STD-2525C warfighting (coding scheme
+   * `S`) function ID such as `"CF"` (civil fixed wing). The builder's symbol
+   * set selects the 2525C battle dimension: air sets use air (`A`), land sets
+   * ground (`G`, then special operations forces `F` for land units), sea
+   * surface `S`, subsurface and mine warfare `U`, space sets `P`, and unknown
+   * `Z`. Sets the mapped symbol set (which can differ, for example air
+   * missile for 2525C missile in flight), entity, and both modifiers,
+   * replacing any set before; identity, status and other fields are kept.
+   *
+   * The codes are edition D's, so set `.version(Version.MilStd2525D)`.
+   * Throws `SidcValidationError` for a malformed function ID, a symbol set
+   * with no 2525C warfighting dimension (control measures, activities,
+   * signals intelligence, cyberspace), or a function ID with no 2525D
+   * equivalent. For a full letter SIDC or other coding schemes, use
+   * `from2525c()` from `milsymbol-sidc/2525c`.
+   */
+  from2525c(functionId: string): Sidc {
+    if (
+      typeof functionId !== "string" ||
+      !/^[A-Za-z0-9-]{1,6}$/.test(functionId.trim())
+    ) {
+      throw new SidcValidationError(
+        `2525C function ID must be 1-6 letters, digits or "-", got ${JSON.stringify(functionId)}.`,
+      );
+    }
+    const { symbolSet } = this.fields;
+    if (!Object.prototype.hasOwnProperty.call(DIMENSIONS_2525C, symbolSet)) {
+      throw new SidcValidationError(
+        `Symbol set ${symbolSet} has no MIL-STD-2525C warfighting battle dimension.`,
+      );
+    }
+    const mapping = from2525cFunction(functionId, symbolSet);
+    if (mapping === undefined) {
+      throw new SidcValidationError(
+        `2525C function ID "${functionId.trim().toUpperCase()}" has no MIL-STD-2525D equivalent in symbol set ${symbolSet}.`,
+      );
+    }
+    const extension = this.fields.extension;
+    return this.with({
+      symbolSet: mapping.symbolSet,
+      entity: mapping.entity,
+      modifier1: mapping.modifier1,
+      modifier2: mapping.modifier2,
+      extension:
+        extension === undefined
+          ? undefined
+          : { ...extension, modifier1Extension: "0", modifier2Extension: "0" },
+    });
   }
 
   private entityFromParts(parts: SidcEntityParts): Sidc {

@@ -229,3 +229,97 @@ writeFileSync(
 console.log(
   `names: ${snapshot.symbolSets.length} symbol sets (JMSML ${source.commit.slice(0, 7)})`,
 );
+
+/**
+ * MIL-STD-2525C patterns that JMSML maps to more than one distinct 2525D code
+ * with equal standing, and the symbol set to prefer. "Missile in flight" is
+ * mapped to both air "Weapon" (reserved for hierarchy) and air missile
+ * "Missile"; the air missile set is the drawable equivalent.
+ */
+const LEGACY_PREFERENCES = { "S*APW-----*****": "02" };
+
+/** Lower ranks win: proper 2525C mappings before duplicates and 2525B c2. */
+const legacyRank = (row) => (row.duplicate ? 2 : 0) + (row.bc2Only ? 1 : 0);
+const legacyKey = (row) =>
+  `${row.symbolSet}${row.entity}${row.modifier1}${row.modifier2}`;
+
+const legacyByPattern = new Map();
+for (const set of snapshot.symbolSets) {
+  for (const row of set.legacy2525c) {
+    const rows = legacyByPattern.get(row.pattern) ?? [];
+    rows.push({ ...row, symbolSet: set.code });
+    legacyByPattern.set(row.pattern, rows);
+  }
+}
+const legacyProblems = [];
+const usedPreferences = new Set();
+const legacyRows = [];
+for (const [pattern, rows] of legacyByPattern) {
+  const best = Math.min(...rows.map(legacyRank));
+  let candidates = rows.filter((row) => legacyRank(row) === best);
+  if (pattern in LEGACY_PREFERENCES) {
+    usedPreferences.add(pattern);
+    candidates = candidates.filter(
+      (row) => row.symbolSet === LEGACY_PREFERENCES[pattern],
+    );
+  }
+  const distinct = new Set(candidates.map(legacyKey));
+  if (distinct.size !== 1) {
+    legacyProblems.push(
+      `${pattern}: ${distinct.size} candidates (${[...distinct].join(", ")}); add a LEGACY_PREFERENCES entry`,
+    );
+    continue;
+  }
+  legacyRows.push(candidates[0]);
+}
+for (const pattern of Object.keys(LEGACY_PREFERENCES)) {
+  if (!usedPreferences.has(pattern)) {
+    legacyProblems.push(`${pattern}: unused preference`);
+  }
+}
+if (legacyProblems.length > 0) {
+  throw new Error(
+    `Legacy generation failed:\n  ${legacyProblems.join("\n  ")}`,
+  );
+}
+legacyRows.sort((a, b) => a.pattern.localeCompare(b.pattern));
+
+const legacyOutput = `/**
+ * GENERATED FILE - do not edit by hand.
+ *
+ * MIL-STD-2525C to MIL-STD-2525D symbol mappings derived from the Joint
+ * Military Symbology Markup Language (JMSML), ${source.repository}
+ * at commit ${source.commit}.
+ * JMSML is licensed under the Apache License, Version 2.0; see
+ * data/JMSML-LICENSE.txt.
+ *
+ * Regenerate with \`npm run generate:names\`.
+ */
+
+/**
+ * One row per 2525C pattern: [pattern, symbol set, entity, modifier 1,
+ * modifier 2]. A pattern is the 15-character letter SIDC; \`*\` marks a
+ * position that any value matches.
+ */
+export const LEGACY_2525C_ROWS: readonly (readonly [
+  pattern: string,
+  symbolSet: string,
+  entity: string,
+  modifier1: string,
+  modifier2: string,
+])[] = [
+${legacyRows
+  .map(
+    (row) =>
+      `  [${[row.pattern, row.symbolSet, row.entity, row.modifier1, row.modifier2].map((v) => q(v)).join(", ")}],`,
+  )
+  .join("\n")}
+];
+`;
+
+writeFileSync(
+  new URL("../src/legacy-2525c.generated.ts", import.meta.url),
+  legacyOutput,
+  "utf8",
+);
+console.log(`legacy: ${legacyRows.length} MIL-STD-2525C patterns`);

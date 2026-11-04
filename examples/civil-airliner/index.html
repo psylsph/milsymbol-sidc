@@ -64,6 +64,15 @@
       .warn {
         color: #b3261e;
       }
+      input[name="legacy"] {
+        font-family: ui-monospace, monospace;
+        text-transform: uppercase;
+        width: 8ch;
+      }
+      .hint {
+        font-size: 0.875rem;
+        margin: 0.25rem 0 0;
+      }
     </style>
   </head>
   <body>
@@ -99,6 +108,28 @@
             instead of passenger "09")
           </label>
         </fieldset>
+        <fieldset>
+          <legend>Start from a MIL-STD-2525C function ID</legend>
+          <label>
+            Air function ID
+            <input
+              name="legacy"
+              list="legacy-codes"
+              placeholder="CF"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <datalist id="legacy-codes">
+            <option value="C">Civil aircraft</option>
+            <option value="CF">Civil fixed wing</option>
+            <option value="CH">Civil rotary wing</option>
+            <option value="CL">Civil lighter than air</option>
+          </datalist>
+          <p class="hint" id="legacy-result">
+            Leave empty for a generic air track (no entity).
+          </p>
+        </fieldset>
       </form>
     </div>
 
@@ -120,14 +151,16 @@
       // Pinned CDN builds; swap for local imports in a bundled app:
       //   import ms from "milsymbol";
       //   import { Sidc, ... } from "milsymbol-sidc";
-      import ms from "https://cdn.jsdelivr.net/npm/milsymbol@3.0.4/+esm";
+      //   import { describe2525d } from "milsymbol-sidc/2525d";
+      import ms from "https://cdn.jsdelivr.net/npm/milsymbol@3.0.5/+esm";
       import {
         Sidc,
         Standard,
         StandardIdentity,
         SymbolSet,
         Version,
-      } from "https://cdn.jsdelivr.net/npm/milsymbol-sidc@0.6.0/+esm";
+      } from "https://cdn.jsdelivr.net/npm/milsymbol-sidc@0.8.0/+esm";
+      import { describe2525d } from "https://cdn.jsdelivr.net/npm/milsymbol-sidc@0.8.0/2525d/+esm";
 
       const form = document.getElementById("options");
 
@@ -135,17 +168,56 @@
       // is set (000000), so the fill follows the identity: friendly and
       // assumed-friend tracks are light blue, neutral green, and so on. Add
       // .entity("120100") (civilian fixed-wing) to get milsymbol's civilian
-      // magenta instead.
+      // magenta instead, or enter a 2525C function ID such as "CF" and let
+      // .from2525c() find the entity: the Air symbol set means the 2525C air
+      // battle dimension.
       const base = new Sidc({ standard: Standard.MilStd2525, strict: true })
         .version(Version.MilStd2525D)
         .symbolSet(SymbolSet.Air);
 
+      /**
+       * Applies the optional 2525C function ID. Only air symbols fit this
+       * page, because modifier codes differ per symbol set, so a code that
+       * maps elsewhere (air "W", missile in flight) is refused.
+       */
+      function applyLegacy(builder, code) {
+        const result = document.getElementById("legacy-result");
+        result.className = "hint";
+        if (code.trim() === "") {
+          result.textContent =
+            "Leave empty for a generic air track (no entity).";
+          return builder;
+        }
+        let mapped;
+        try {
+          mapped = builder.from2525c(code);
+        } catch (error) {
+          result.className = "hint warn";
+          result.textContent = error.message;
+          return builder;
+        }
+        if (mapped.toObject().symbolSet !== SymbolSet.Air) {
+          result.className = "hint warn";
+          result.textContent =
+            "Maps to symbol set " +
+            mapped.toObject().symbolSet +
+            ", but this page builds air tracks.";
+          return builder;
+        }
+        result.textContent = "Entity " + mapped.toObject().entity + ".";
+        return mapped;
+      }
+
       function build() {
         const data = new FormData(form);
-        return base
-          .identity(StandardIdentity[data.get("identity")])
-          .modifier1(data.get("hijacked") ? "37" : "00")
-          .modifier2(data.get("heavy") ? "01" : "00");
+        // from2525c() replaces the modifiers, so apply it before them.
+        const builder = applyLegacy(
+          base.identity(StandardIdentity[data.get("identity")]),
+          data.get("legacy"),
+        );
+        return builder
+          .modifier1(data.get("hijacked") ? "37" : "09")
+          .modifier2(data.get("heavy") ? "01" : builder.toObject().modifier2);
       }
 
       function render() {
@@ -165,6 +237,12 @@
           : "✗ milsymbol could not draw every part of this SIDC";
 
         const f = builder.toObject();
+        const names = describe2525d(builder);
+        const entityName = (
+          names.entitySubtype ??
+          names.entityType ??
+          names.entity
+        )?.label;
         const rows = [
           ["1–2", f.version, "Version: MIL-STD-2525D"],
           ["3", f.context, "Context: reality"],
@@ -177,18 +255,20 @@
           ["7", f.status, "Status: present"],
           ["8", f.hqTaskForceDummy, "HQ / task force / dummy: none"],
           ["9–10", f.amplifier, "Amplifier: none"],
-          ["11–16", f.entity, "Entity: none (generic air track)"],
           [
-            "17–18",
-            f.modifier1,
-            f.modifier1 === "37"
-              ? "Modifier 1: hijacking"
-              : "Modifier 1: passenger",
+            "11–16",
+            f.entity,
+            f.entity === "000000"
+              ? "Entity: none (generic air track)"
+              : "Entity: " + entityName,
           ],
+          ["17–18", f.modifier1, "Modifier 1: " + names.modifier1?.label],
           [
             "19–20",
             f.modifier2,
-            f.modifier2 === "01" ? "Modifier 2: heavy" : "Modifier 2: none",
+            f.modifier2 === "00"
+              ? "Modifier 2: none"
+              : "Modifier 2: " + names.modifier2?.label,
           ],
         ];
         const body = document.getElementById("breakdown");
@@ -206,6 +286,9 @@
       }
 
       form.addEventListener("change", render);
+      form.addEventListener("input", (event) => {
+        if (event.target.name === "legacy") render();
+      });
       render();
     </script>
   </body>

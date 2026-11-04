@@ -11,6 +11,47 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Added
+
+- **`Sidc.from2525c(functionId)`** sets the 2525D symbol set, entity, and
+  modifiers from a MIL-STD-2525C warfighting function ID, using the builder's
+  symbol set as the 2525C battle dimension:
+  `new Sidc().version(Version.MilStd2525D).symbolSet(SymbolSet.Air).from2525c("CF")`
+  sets civilian fixed wing (`120100`). It throws `SidcValidationError` when
+  there is no equivalent. Existing output is unchanged, but the main entry
+  point now includes the mapping table (about 9 KB gzipped).
+- **MIL-STD-2525C to 2525D mapping** in the new `milsymbol-sidc/2525c`
+  subpath: `from2525c("SFAPCF----")` returns the 2525D `symbolSet`, six-digit
+  `entity`, `modifier1`, and `modifier2` for a 2525C (or 2525B) letter SIDC in
+  any coding scheme, or `undefined` when there is no equivalent;
+  `from2525cFunction("CF", SymbolSet.Air)` does the same for a bare function
+  ID. Both cover 1,576 2525C patterns from the legacy symbol tables of the same
+  pinned JMSML commit. Affiliation, status, and amplifiers are not converted.
+- `examples/civil-airliner` uses `from2525c()`: the page takes a 2525C air
+  function ID, and `render.mjs` writes `airliner-from-2525c.svg`. The page now loads
+  `milsymbol-sidc@0.8.0` from the CDN.
+
+### Changed
+
+- Development dependencies: `milsymbol` 3.0.5 (the version the catalogs and
+  rendering tests are checked against), `eslint` 10.13.0, and
+  `typescript-eslint` 8.72.1 (supersedes #14). The regenerated catalog's
+  contents are unchanged; only its recorded milsymbol version moved. The
+  `examples/civil-airliner` page now loads milsymbol 3.0.5.
+
+### Fixed
+
+- `examples/civil-airliner/index.html` now sets modifier 1 to passenger (`09`)
+  when "hijacking" is unchecked, as its breakdown and README describe; it
+  previously emitted `00`.
+
+### Tooling
+
+- `npm run import:jmsml` also records each symbol set's resolved
+  `legacy2525c` mappings in `data/jmsml-2525d.json`, and
+  `npm run generate:names` writes `src/legacy-2525c.generated.ts` (checked for
+  staleness in CI).
+
 ## [0.7.0] - 2026-10-13
 
 Named MIL-STD-2525D codes (optional `milsymbol-sidc/2525d` subpath) and a

@@ -10,6 +10,7 @@ export default tseslint.config(
       "docs/**",
       "src/catalogs.generated.ts",
       "src/names-2525d.generated.ts",
+      "src/legacy-2525c.generated.ts",
     ],
   },
   eslint.configs.recommended,
