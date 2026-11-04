@@ -11,6 +11,13 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+## [0.8.0] - 2026-11-04
+
+MIL-STD-2525C to 2525D mapping, both as a builder method
+(`.from2525c("CF")`) and as an optional `milsymbol-sidc/2525c` subpath, plus
+development dependency updates. Existing output is unchanged; the main entry
+point grows by the mapping table (about 9 KB gzipped).
+
 ### Added
 
 - **`Sidc.from2525c(functionId)`** sets the 2525D symbol set, entity, and
@@ -28,8 +35,8 @@ release is cut (see `AGENTS.md` → Releasing).
   ID. Both cover 1,576 2525C patterns from the legacy symbol tables of the same
   pinned JMSML commit. Affiliation, status, and amplifiers are not converted.
 - `examples/civil-airliner` uses `from2525c()`: the page takes a 2525C air
-  function ID, and `render.mjs` writes `airliner-from-2525c.svg`. The page now loads
-  `milsymbol-sidc@0.8.0` from the CDN.
+  function ID, and `render.mjs` writes `airliner-from-2525c.svg`. The page now
+  loads `milsymbol-sidc@0.8.0` from the CDN.
 
 ### Changed
 
@@ -335,7 +342,8 @@ Initial release: a fluent TypeScript builder for MIL-STD-2525E numeric
 - GitHub Actions workflow to auto-publish to npm on release, using npm trusted
   publishing (OIDC) with provenance.
 
-[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.8.0
 [0.7.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.7.0
 [0.6.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.6.0
 [0.5.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.5.0
