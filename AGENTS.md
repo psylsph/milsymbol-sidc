@@ -135,8 +135,15 @@ Then grep for stragglers and confirm nothing else hardcodes the old version:
 
 ```bash
 grep -rn "0\.x\.y" --include='*.ts' --include='*.json' --include='*.md' \
-  --include='*.mjs' --include='*.yml' . | grep -v node_modules
+  --include='*.mjs' --include='*.yml' --include='*.html' . | grep -v node_modules
 ```
+
+The civil-airliner example pins this package's CDN version
+(`milsymbol-sidc@x.y.z` in `examples/civil-airliner/index.html` and its
+`README.md`). Bump it to the **new** version in the release commit so the
+example always tracks the latest release; the jsDelivr URLs start resolving a
+few minutes after the publish step. Afterwards, confirm they return 200 (see
+step 7).
 
 `README.md` uses npm badges (dynamic) and `docs/plans/` is historical, so neither
 should normally need a version edit. The `milsymbol` version pin in
@@ -154,7 +161,7 @@ Re-run the checks from step 2 after the version/changelog edits, then commit —
 use the version as the message to match existing history:
 
 ```bash
-git add package.json package-lock.json CHANGELOG.md
+git add package.json package-lock.json CHANGELOG.md examples/civil-airliner
 git commit -m "x.y.z"
 git push origin main
 ```
@@ -182,6 +189,7 @@ Packages mirror:
 gh run watch
 npm view milsymbol-sidc version
 gh api /users/psylsph/packages/npm/milsymbol-sidc/versions --jq '.[0].name'
+curl -s -o /dev/null -w '%{http_code}\n' https://cdn.jsdelivr.net/npm/milsymbol-sidc@x.y.z/+esm
 ```
 
 Also confirm the release notes on GitHub match the changelog section.
