@@ -47,8 +47,8 @@ samples use it: the page has a "Start from a MIL-STD-2525C function ID" field
 
 An interactive page: pick the identity, toggle "heavy" or "hijacking", or enter
 a 2525C function ID to see the SIDC, its breakdown, and the rendered symbol
-update. It loads both libraries from the jsDelivr CDN (`milsymbol-sidc@0.8.0`,
-the first release with `from2525c()`), so it needs no build step, but browsers
+update. It loads both libraries from the jsDelivr CDN (`milsymbol-sidc@0.9.1`;
+`from2525c()` needs 0.8.0 or later), so it needs no build step, but browsers
 block ES modules from `file://` pages; serve the folder over HTTP instead:
 
 ```bash
