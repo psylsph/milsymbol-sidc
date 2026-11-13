@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import ms from "milsymbol";
 import {
+  Context,
   Sidc,
   SidcValidationError,
   Standard,
@@ -135,6 +136,14 @@ describe("from2525cFunction", () => {
     assert.equal(from2525cFunction("C", "30")?.symbolSet, "30");
   });
 
+  it('treats an empty function ID as "------"', () => {
+    assert.deepEqual(
+      from2525cFunction("", "01"),
+      from2525cFunction("------", "01"),
+    );
+    assert.equal(from2525cFunction("  ", "30")?.pattern, "S*SP------*****");
+  });
+
   it("falls back to 2525C special operations forces for land units", () => {
     assert.equal(from2525cFunction("AF", "10")?.pattern, "S*FPAF----*****");
   });
@@ -144,7 +153,7 @@ describe("from2525cFunction", () => {
     assert.equal(from2525cFunction("CF", "25"), undefined);
     assert.equal(from2525cFunction("CF", "constructor"), undefined);
     assert.equal(from2525cFunction("CFXXXXX", "01"), undefined);
-    assert.equal(from2525cFunction("", "01"), undefined);
+    assert.equal(from2525cFunction("C*", "01"), undefined);
   });
 
   it("lists only symbol sets that exist", () => {
@@ -166,6 +175,15 @@ describe("Sidc.from2525c", () => {
     assert.equal(air.from2525c("MFCL").toString(), "10040100001101070003");
   });
 
+  it('treats an empty function ID as "------"', () => {
+    const cf = air.from2525c("CF");
+    assert.equal(cf.from2525c("").toString(), air.toString());
+    assert.equal(
+      cf.from2525c("").toString(),
+      cf.from2525c("------").toString(),
+    );
+  });
+
   it("keeps other fields and replaces earlier modifiers", () => {
     const sidc = air.status("1").modifier1("09").from2525c("CF").toObject();
     assert.equal(sidc.identity, "4");
@@ -183,6 +201,16 @@ describe("Sidc.from2525c", () => {
       air.symbolSet(SymbolSet.LandEquipment).from2525c("UCI").toObject()
         .symbolSet,
       "10",
+    );
+  });
+
+  it("leaves context alone: Reality by default, otherwise as set", () => {
+    // 2525C has no context, so conversion must neither add nor change one.
+    assert.equal(air.from2525c("MF").toObject().context, Context.Reality);
+    assert.equal(air.from2525c("MF").toString().slice(0, 3), "100");
+    assert.equal(
+      air.context(Context.Exercise).from2525c("MF").toObject().context,
+      Context.Exercise,
     );
   });
 

@@ -265,6 +265,7 @@ export class Sidc {
    * `Z`. Sets the mapped symbol set (which can differ, for example air
    * missile for 2525C missile in flight), entity, and both modifiers,
    * replacing any set before; identity, status and other fields are kept.
+   * The function ID is padded with `-`, so `""` is treated as `"------"`.
    *
    * The codes are edition D's, so set `.version(Version.MilStd2525D)`.
    * Throws `SidcValidationError` for a malformed function ID, a symbol set
@@ -276,10 +277,10 @@ export class Sidc {
   from2525c(functionId: string): Sidc {
     if (
       typeof functionId !== "string" ||
-      !/^[A-Za-z0-9-]{1,6}$/.test(functionId.trim())
+      !/^[A-Za-z0-9-]{0,6}$/.test(functionId.trim())
     ) {
       throw new SidcValidationError(
-        `2525C function ID must be 1-6 letters, digits or "-", got ${JSON.stringify(functionId)}.`,
+        `2525C function ID must be at most 6 letters, digits or "-", got ${JSON.stringify(functionId)}.`,
       );
     }
     const { symbolSet } = this.fields;

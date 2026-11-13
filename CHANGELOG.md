@@ -11,6 +11,14 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+### Changed
+
+- **Empty 2525C function IDs** are now treated as `"------"` (the battle
+  dimension itself) by `Sidc.from2525c("")` and `from2525cFunction("", set)`,
+  instead of throwing or returning `undefined`. The malformed-input error now
+  reads `2525C function ID must be at most 6 letters, digits or "-"` (was
+  `1-6`). The full-SIDC `from2525c("")` still returns `undefined`.
+
 ## [0.8.0] - 2026-11-04
 
 MIL-STD-2525C to 2525D mapping, both as a builder method

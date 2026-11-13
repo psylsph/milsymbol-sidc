@@ -154,7 +154,7 @@ export const DIMENSIONS_2525C: Readonly<Record<string, readonly string[]>> =
     "36": ["U"],
   });
 
-const FUNCTION_ID = /^[A-Z0-9-]{1,6}$/;
+const FUNCTION_ID = /^[A-Z0-9-]{0,6}$/;
 
 /**
  * Finds the MIL-STD-2525D codes for a MIL-STD-2525C warfighting (coding
@@ -162,7 +162,8 @@ const FUNCTION_ID = /^[A-Z0-9-]{1,6}$/;
  * The 2525D symbol set selects the 2525C battle dimension (see
  * {@link DIMENSIONS_2525C}); the result's own `symbolSet` can differ from it
  * (a land equipment code found under 2525C ground, for example). The function
- * ID is padded with `-` to six characters and case is ignored. Returns
+ * ID is padded with `-` to six characters (so an empty string means
+ * `"------"`, the dimension itself) and case is ignored. Returns
  * `undefined` for a malformed function ID, a symbol set with no 2525C
  * warfighting dimension, or a function ID with no 2525D equivalent.
  *
