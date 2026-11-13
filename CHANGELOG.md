@@ -11,6 +11,11 @@ Everything in this section is pending the next tagged release. Add entries here
 as work lands on `main`, then move them under the new version heading when the
 release is cut (see `AGENTS.md` → Releasing).
 
+## [0.9.0] - 2026-11-13
+
+Empty MIL-STD-2525C function IDs now map to the battle dimension itself. Default
+output for previously accepted input is unchanged.
+
 ### Changed
 
 - **Empty 2525C function IDs** are now treated as `"------"` (the battle
@@ -350,7 +355,8 @@ Initial release: a fluent TypeScript builder for MIL-STD-2525E numeric
 - GitHub Actions workflow to auto-publish to npm on release, using npm trusted
   publishing (OIDC) with provenance.
 
-[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/psylsph/milsymbol-sidc/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.9.0
 [0.8.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.8.0
 [0.7.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.7.0
 [0.6.0]: https://github.com/psylsph/milsymbol-sidc/releases/tag/v0.6.0
